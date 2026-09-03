@@ -1,0 +1,22 @@
+services:
+  db:
+    # If Docker Hub rate-limits this pull, swap in the ECR mirror:
+    #   image: public.ecr.aws/docker/library/postgres:16-alpine
+    image: postgres:16
+    container_name: maai-postgres
+    environment:
+      POSTGRES_USER: maai
+      POSTGRES_PASSWORD: maai
+      POSTGRES_DB: maai
+    ports:
+      - "5432:5432"
+    volumes:
+      - maai_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  maai_pgdata:

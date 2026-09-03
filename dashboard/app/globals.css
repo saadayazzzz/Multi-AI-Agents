@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(56, 224, 208, 0.08), transparent 60%),
+    #05070d;
+  color: #d7e3f4;
+}
+
+/* thin dark scrollbars */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1c2740;
+  border-radius: 8px;
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes core-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.anim-spin-slow {
+  animation: spin-slow 18s linear infinite;
+}
+.anim-spin-rev {
+  animation: spin-rev 12s linear infinite;
+}
+.anim-core-idle {
+  animation: core-pulse 4s ease-in-out infinite;
+}
+.anim-core-think {
+  animation: core-pulse 1.1s ease-in-out infinite;
+}
+.anim-core-speak {
+  animation: core-pulse 0.5s ease-in-out infinite;
+}
+
+.panel {
+  @apply rounded-xl border border-edge bg-panel/70 backdrop-blur;
+}
+.label {
+  @apply font-mono text-[10px] uppercase tracking-[0.2em] text-jarvis/60;
+}
