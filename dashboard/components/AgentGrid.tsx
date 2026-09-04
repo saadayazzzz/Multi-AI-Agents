@@ -2,35 +2,46 @@
 
 import type { AgentState } from "@/lib/api";
 
-const NAMES: Record<string, string> = {
-  orchestrator: "JARVIS · Orchestrator",
-  agent1: "Agent 1 · Discovery",
-  agent2: "Agent 2 · Scrape & Store",
-  agent3: "Agent 3 · Brand Builder",
-  agent4: "Agent 4 · Product Imagery",
+const NAMES: Record<string, [string, string]> = {
+  orchestrator: ["JARVIS", "Orchestrator"],
+  agent1: ["Agent 1", "Discovery"],
+  agent2: ["Agent 2", "Scrape & Store"],
+  agent3: ["Agent 3", "Brand Builder"],
+  agent4: ["Agent 4", "Product Imagery"],
 };
+const ORDER = ["orchestrator", "agent1", "agent2", "agent3", "agent4"];
 
 export function AgentGrid({ agents, busy }: { agents: AgentState[]; busy: boolean }) {
-  const ordered = ["orchestrator", "agent1", "agent2", "agent3", "agent4"].map(
-    (a) => agents.find((x) => x.actor === a) ?? { actor: a, state: "idle" as const, last_message: null, last_kind: null, last_ts: null },
+  const rows = ORDER.map(
+    (a) =>
+      agents.find((x) => x.actor === a) ?? {
+        actor: a, state: "idle" as const,
+        last_message: null, last_kind: null, last_ts: null,
+      },
   );
+
   return (
-    <div className="space-y-2">
-      <div className="label">Agents</div>
-      {ordered.map((a) => {
+    <div className="divide-y divide-jarvis/10">
+      {rows.map((a) => {
         const active = busy && a.state === "working";
+        const [name, role] = NAMES[a.actor] ?? [a.actor, ""];
         return (
-          <div key={a.actor} className="panel flex items-start gap-3 px-3 py-2.5">
+          <div key={a.actor} className="flex items-start gap-3 px-3 py-2.5">
             <span
               className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                active ? "bg-jarvis shadow-glow" : "bg-edge"
+                active ? "bg-jarvis anim-blip" : "bg-jarvis/20"
               }`}
-              style={active ? { animation: "flicker 1s infinite" } : undefined}
+              style={active ? { boxShadow: "0 0 10px #38e0d0" } : undefined}
             />
-            <div className="min-w-0">
-              <div className="text-sm text-slate-200">{NAMES[a.actor] ?? a.actor}</div>
-              <div className="truncate font-mono text-xs text-slate-500">
-                {a.last_message ?? "no activity yet"}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] font-medium text-jarvis-soft">{name}</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-jarvis/35">
+                  {role}
+                </span>
+              </div>
+              <div className="mt-0.5 truncate font-mono text-[10px] text-jarvis/45">
+                {a.last_message ?? "idle"}
               </div>
             </div>
           </div>

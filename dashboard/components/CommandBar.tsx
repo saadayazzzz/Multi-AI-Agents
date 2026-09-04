@@ -25,18 +25,26 @@ export function CommandBar({
   };
 
   return (
-    <div className="panel flex items-center gap-3 px-3 py-3">
+    <div
+      className="hud-panel pointer-events-auto flex w-[min(92vw,640px)] items-center gap-3 px-3 py-2.5"
+      style={{ boxShadow: "0 0 60px -18px rgba(56,224,208,0.55)" }}
+    >
+      <span className="hud-corner tl" />
+      <span className="hud-corner tr" />
+      <span className="hud-corner bl" />
+      <span className="hud-corner br" />
+
       <button
         onClick={onMic}
         disabled={!supported}
-        title={supported ? "Hold a thought and speak" : "Voice not supported in this browser"}
-        className={`grid h-12 w-12 shrink-0 place-items-center rounded-full border transition ${
+        title={supported ? "Click, then speak" : "Voice unsupported in this browser"}
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border transition ${
           listening
-            ? "border-jarvis-amber bg-jarvis-amber/10 text-jarvis-amber"
-            : "border-jarvis bg-jarvis/10 text-jarvis hover:bg-jarvis/20"
-        } disabled:opacity-30`}
+            ? "border-jarvis-amber bg-jarvis-amber/15 text-jarvis-amber anim-blip"
+            : "border-jarvis/60 bg-jarvis/10 text-jarvis hover:bg-jarvis/20"
+        } disabled:cursor-not-allowed disabled:opacity-30`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <rect x="9" y="2" width="6" height="12" rx="3" />
           <path d="M5 11a7 7 0 0 0 14 0M12 18v4" />
         </svg>
@@ -47,13 +55,13 @@ export function CommandBar({
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && send()}
         readOnly={listening}
-        placeholder='Say or type a command — e.g. "find fresh sites, scrape them, then rebuild the store"'
-        className="flex-1 bg-transparent font-mono text-sm text-slate-200 outline-none placeholder:text-slate-600"
+        placeholder="Ask JARVIS…  “find fresh sites, scrape them, rebuild the store with images”"
+        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-jarvis outline-none placeholder:text-jarvis/30"
       />
 
       <button
         onClick={send}
-        className="shrink-0 rounded-lg border border-edge px-4 py-2 font-mono text-xs uppercase tracking-wider text-slate-300 hover:border-jarvis hover:text-jarvis"
+        className="shrink-0 rounded border border-jarvis/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-jarvis/80 transition hover:bg-jarvis/10 hover:text-jarvis"
       >
         Send
       </button>

@@ -1,37 +1,89 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTask } from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
 import { JarvisCore, type CoreState } from "@/components/JarvisCore";
-import { StatsBar } from "@/components/StatsBar";
+import { HudPanel, type Corner } from "@/components/HudPanel";
+import { TetherLines } from "@/components/TetherLines";
 import { AgentGrid } from "@/components/AgentGrid";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
+import { Analytics } from "@/components/Analytics";
 import { CommandBar } from "@/components/CommandBar";
+
+const CORE_COPY: Record<CoreState, string> = {
+  idle: "Standing by",
+  listening: "Listening",
+  thinking: "Working",
+  speaking: "Responding",
+  offline: "Link down",
+};
 
 export default function Console() {
   const { connected, stats, agents, tasks, events, latestSpoken } = useJarvis();
   const voice = useVoice();
   const [muted, setMuted] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [pulse, setPulse] = useState(false);
+  const [flash, setFlash] = useState(0);
   const spokenId = useRef(0);
+  const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const busy = useMemo(
     () => tasks.some((t) => t.status === "running" || t.status === "queued"),
     [tasks],
   );
+  const hudActive = pinned || busy || events.length > 0 || pulse;
 
-  // Speak new orchestrator lines aloud (once each).
+  // Panels unfold one at a time in this order, each ~0.5s after the previous.
+  const ORDER: Corner[] = ["tr", "tl", "br", "bl"];
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!hudActive) {
+      setStep(0);
+      return;
+    }
+    let s = step;
+    const tick = () => {
+      s += 1;
+      setStep(s);
+    };
+    const first = setTimeout(tick, 140);
+    const iv = setInterval(() => {
+      if (s >= ORDER.length) {
+        clearInterval(iv);
+        return;
+      }
+      tick();
+    }, 480);
+    return () => {
+      clearTimeout(first);
+      clearInterval(iv);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hudActive]);
+
+  const shown = ORDER.slice(0, step);
+  const isOpen = (c: Corner) => shown.includes(c);
+
   useEffect(() => {
     if (!latestSpoken || latestSpoken.id <= spokenId.current) return;
     spokenId.current = latestSpoken.id;
     if (!muted) voice.speak(latestSpoken.text);
   }, [latestSpoken, muted, voice]);
 
-  // Voice transcript -> task.
+  const reveal = useCallback(() => {
+    setPulse(true);
+    setFlash((f) => f + 1);
+    clearTimeout(pulseTimer.current);
+    pulseTimer.current = setTimeout(() => setPulse(false), 18000);
+  }, []);
+
   useEffect(() => {
     voice.onResult(async (text) => {
+      reveal();
       try {
         await createTask(text, "voice");
         if (!muted) voice.speak("On it.");
@@ -39,10 +91,15 @@ export default function Console() {
         if (!muted) voice.speak("I could not reach the control plane.");
       }
     });
-  }, [voice, muted]);
+  }, [voice, muted, reveal]);
 
   const submitText = async (text: string) => {
-    await createTask(text, "text");
+    reveal();
+    try {
+      await createTask(text, "text");
+    } catch {
+      /* surfaced via link status */
+    }
   };
 
   const coreState: CoreState = !connected
@@ -56,68 +113,95 @@ export default function Console() {
           : "idle";
 
   return (
-    <main className="mx-auto max-w-[1400px] px-5 py-6">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-mono text-xl tracking-[0.35em] text-jarvis">J A R V I S</h1>
-          <p className="mt-1 font-mono text-[11px] text-slate-500">
-            multi-agent skincare &amp; cosmetics control plane
-          </p>
+    <div className="hud-stage relative h-screen w-screen overflow-hidden">
+      {/* backdrop */}
+      <div className="hud-grid pointer-events-none absolute inset-0" />
+      <div className="anim-spin-cw pointer-events-none absolute left-1/2 top-1/2 h-[170vh] w-[170vh] -translate-x-1/2 -translate-y-1/2 rounded-full border border-jarvis/[0.06]" />
+      <div className="hud-vignette pointer-events-none absolute inset-0" />
+      {flash > 0 && <span key={flash} className="stage-flash" />}
+
+      {/* beams from core -> panels (drawn one at a time) */}
+      <TetherLines shown={shown} />
+
+      {/* top bar */}
+      <header className="pointer-events-auto absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <span className="holo font-mono text-sm font-semibold tracking-[0.5em] text-jarvis">
+            JARVIS
+          </span>
+          <span className="hidden font-mono text-[10px] text-jarvis/35 md:inline">
+            multi-agent control plane
+          </span>
         </div>
-        <div className="flex items-center gap-4 font-mono text-[11px]">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setMuted((m) => !m)}
-            className={`rounded border px-2 py-1 uppercase tracking-wider ${
-              muted ? "border-edge text-slate-500" : "border-jarvis/50 text-jarvis"
-            }`}
+            className={`chip ${muted ? "opacity-50" : ""}`}
           >
             {muted ? "voice off" : "voice on"}
           </button>
-          <span className={connected ? "text-jarvis" : "text-jarvis-red"}>
-            {connected ? "● link active" : "● link down"}
+          <button
+            onClick={() => setPinned((p) => !p)}
+            className={`chip ${pinned ? "bg-jarvis/20 text-jarvis" : "opacity-60"}`}
+          >
+            {pinned ? "panels pinned" : "pin panels"}
+          </button>
+          <span className={`chip ${connected ? "" : "border-jarvis-red/40 text-jarvis-red"}`}>
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                connected ? "bg-jarvis anim-blip" : "bg-jarvis-red"
+              }`}
+            />
+            {connected ? "online" : "offline"}
           </span>
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)_360px]">
-        {/* left: agents + stats */}
-        <div className="space-y-4">
-          <StatsBar stats={stats} />
-          <AgentGrid agents={agents} busy={busy} />
-        </div>
+      {/* four corner windows — burst out of the core, one after another */}
+      <HudPanel corner="tr" open={isOpen("tr")} title="Activity" count={events.length}>
+        <ActivityFeed events={events} />
+      </HudPanel>
 
-        {/* center: core + command + feed */}
-        <div className="flex flex-col gap-4">
-          <div className="panel flex flex-col items-center py-6">
-            <JarvisCore state={coreState} />
-            {voice.listening && voice.interim && (
-              <p className="mt-2 max-w-md text-center font-mono text-xs text-jarvis-amber">
-                “{voice.interim}”
-              </p>
-            )}
-          </div>
-          <CommandBar
-            supported={voice.supported}
-            listening={voice.listening}
-            interim={voice.interim}
-            onMic={() => (voice.listening ? voice.stop() : voice.listenOnce())}
-            onSubmitText={submitText}
-          />
-          <div className="h-[360px]">
-            <ActivityFeed events={events} />
-          </div>
-        </div>
+      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 5}>
+        <AgentGrid agents={agents} busy={busy} />
+      </HudPanel>
 
-        {/* right: tasks */}
-        <div className="h-[720px]">
-          <TaskQueue tasks={tasks} />
+      <HudPanel corner="br" open={isOpen("br")} title="Analytics">
+        <Analytics stats={stats} tasks={tasks} />
+      </HudPanel>
+
+      <HudPanel corner="bl" open={isOpen("bl")} title="Tasks" count={tasks.length}>
+        <TaskQueue tasks={tasks} />
+      </HudPanel>
+
+      {/* center — core + command */}
+      <div
+        className={`pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center gap-5 transition-transform duration-500 ${
+          step > 0 ? "scale-[0.9]" : ""
+        }`}
+      >
+        <JarvisCore state={coreState} />
+        <div className="flex h-5 items-center gap-2">
+          <span className="label holo">{CORE_COPY[coreState]}</span>
+          {voice.listening && voice.interim && (
+            <span className="row-in max-w-sm truncate font-mono text-xs text-jarvis-amber">
+              “{voice.interim}”
+            </span>
+          )}
         </div>
+        <CommandBar
+          supported={voice.supported}
+          listening={voice.listening}
+          interim={voice.interim}
+          onMic={() => (voice.listening ? voice.stop() : voice.listenOnce())}
+          onSubmitText={submitText}
+        />
+        {!voice.supported && (
+          <span className="font-mono text-[10px] text-jarvis/30">
+            voice needs Chrome or Edge — typing works everywhere
+          </span>
+        )}
       </div>
-
-      <footer className="mt-6 font-mono text-[10px] text-slate-600">
-        Tasks run in the worker process — they keep going after you close this tab.
-        {!voice.supported && " · This browser has no Web Speech API; use Chrome or Edge for voice."}
-      </footer>
-    </main>
+    </div>
   );
 }
