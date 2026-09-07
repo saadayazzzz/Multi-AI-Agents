@@ -61,20 +61,20 @@ export function JarvisCore({
         </>
       )}
 
-      {/* speaking: fast bright heartbeat rings */}
+      {/* speaking: soft rings drifting outward in a gentle wave */}
       {speaking && (
         <>
           <span
-            className="anim-speak-ring absolute inset-[26%] rounded-full border-2"
-            style={{ borderColor: p, boxShadow: `0 0 24px ${p}` }}
+            className="anim-speak-ring absolute inset-[28%] rounded-full border"
+            style={{ borderColor: p }}
           />
           <span
-            className="anim-speak-ring absolute inset-[26%] rounded-full border-2"
-            style={{ borderColor: p, animationDelay: "0.2s" }}
+            className="anim-speak-ring absolute inset-[28%] rounded-full border"
+            style={{ borderColor: p, animationDelay: "0.57s" }}
           />
           <span
-            className="anim-speak-ring absolute inset-[26%] rounded-full border"
-            style={{ borderColor: a, animationDelay: "0.4s" }}
+            className="anim-speak-ring absolute inset-[28%] rounded-full border"
+            style={{ borderColor: a, animationDelay: "1.13s" }}
           />
         </>
       )}
@@ -185,7 +185,7 @@ export function JarvisCore({
           style={{
             background: `radial-gradient(circle at 50% 36%, ${p}, ${p}22 55%, transparent 72%)`,
             boxShadow: speaking
-              ? `0 0 160px -4px ${p}, 0 0 70px -6px ${a}, inset 0 0 50px -10px ${p}`
+              ? `0 0 120px -6px ${p}, 0 0 50px -6px ${a}88, inset 0 0 46px -12px ${p}`
               : `0 0 100px -8px ${p}, 0 0 40px -6px ${a}66, inset 0 0 44px -14px ${p}`,
           }}
         >
