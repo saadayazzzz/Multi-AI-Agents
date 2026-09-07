@@ -21,6 +21,7 @@ for _s in (sys.stdout, sys.stderr):
 from db.database import wait_for_db
 from geo.db import init_geo_db
 from geo.pipeline import create_project, gen_queries, run_probe
+from geo.report import print_report
 
 
 def main() -> None:
@@ -46,6 +47,9 @@ def main() -> None:
     rp.add_argument("--samples", type=int, default=1)
     rp.add_argument("--limit", type=int)
 
+    rr = sub.add_parser("report")
+    rr.add_argument("project", type=int)
+
     args = ap.parse_args()
     wait_for_db()
     init_geo_db()
@@ -66,6 +70,9 @@ def main() -> None:
 
     elif args.cmd == "probe":
         run_probe(args.project, args.engine, args.samples, args.limit)
+
+    elif args.cmd == "report":
+        print_report(args.project)
 
 
 if __name__ == "__main__":
