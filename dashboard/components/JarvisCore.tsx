@@ -2,148 +2,193 @@
 
 export type CoreState = "idle" | "listening" | "thinking" | "speaking" | "offline";
 
-const COL: Record<CoreState, string> = {
+export type Readout = { label: string; value: string | number };
+
+const PRIMARY: Record<CoreState, string> = {
   idle: "#38e0d0",
   listening: "#ffb454",
   thinking: "#38e0d0",
   speaking: "#7cf5ea",
   offline: "#ff5c72",
 };
+const ACCENT: Record<CoreState, string> = {
+  idle: "#ff8a3c",
+  listening: "#ffd27a",
+  thinking: "#ff8a3c",
+  speaking: "#38e0d0",
+  offline: "#ff8a8a",
+};
 
-const OUTER_TICKS = Array.from({ length: 72 }, (_, i) => i);
-const BARS = Array.from({ length: 40 }, (_, i) => i);
+const C = 210;
+const outerTicks = Array.from({ length: 90 }, (_, i) => i);
+const innerTicks = Array.from({ length: 60 }, (_, i) => i);
+const spokes = [18, 52, 128, 164, 212, 300, 336]; // degrees — radial callout lines
+const bars = Array.from({ length: 44 }, (_, i) => i);
 
-export function JarvisCore({ state }: { state: CoreState }) {
-  const c = COL[state];
+function pt(deg: number, r: number): [number, number] {
+  const a = (deg * Math.PI) / 180;
+  return [C + Math.cos(a) * r, C + Math.sin(a) * r];
+}
+
+export function JarvisCore({
+  state,
+  readouts = [],
+}: {
+  state: CoreState;
+  readouts?: Readout[];
+}) {
+  const p = PRIMARY[state];
+  const a = ACCENT[state];
   const coreAnim =
     state === "thinking"
       ? "anim-core-think"
       : state === "speaking"
         ? "anim-core-speak"
         : "anim-core-idle";
-  const midSpin = state === "thinking" ? "anim-spin-cw-fast" : "anim-spin-cw";
   const emitting = state === "speaking" || state === "listening";
 
   return (
     <div
-      className="relative aspect-square w-[min(78vw,60vh,560px)] select-none"
-      style={{ color: c }}
+      className="relative aspect-square w-[min(82vw,64vh,600px)] select-none"
+      style={{ color: p }}
     >
-      {/* emitted pulse waves */}
       {emitting && (
         <>
-          <span
-            className="anim-emit absolute inset-[18%] rounded-full border"
-            style={{ borderColor: c }}
-          />
-          <span
-            className="anim-emit-2 absolute inset-[18%] rounded-full border"
-            style={{ borderColor: c }}
-          />
+          <span className="anim-emit absolute inset-[20%] rounded-full border" style={{ borderColor: p }} />
+          <span className="anim-emit-2 absolute inset-[20%] rounded-full border" style={{ borderColor: p }} />
         </>
       )}
 
-      <svg viewBox="0 0 400 400" className="absolute inset-0 h-full w-full anim-reactor-glow">
-        {/* outer tick ring */}
-        <g stroke={c} strokeOpacity="0.4">
-          {OUTER_TICKS.map((i) => {
-            const a = (i / OUTER_TICKS.length) * Math.PI * 2;
-            const major = i % 6 === 0;
-            const r1 = major ? 178 : 184;
+      <svg
+        viewBox="0 0 420 420"
+        className="absolute inset-0 h-full w-full"
+        style={{ filter: `drop-shadow(0 0 18px ${p}) drop-shadow(0 0 40px ${p}55)` }}
+      >
+        {/* ---- outer detail ring ---- */}
+        <circle cx={C} cy={C} r="200" fill="none" stroke={p} strokeOpacity="0.1" />
+        <g stroke={p} strokeOpacity="0.45">
+          {outerTicks.map((i) => {
+            const deg = (i / outerTicks.length) * 360;
+            const major = i % 5 === 0;
+            const [x1, y1] = pt(deg, major ? 188 : 194);
+            const [x2, y2] = pt(deg, 200);
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={major ? 1.6 : 0.7} />;
+          })}
+        </g>
+
+        {/* ---- bright accent arc (the warm sweep) ---- */}
+        <g className="anim-spin-cw" style={{ transformOrigin: "210px 210px" }}>
+          <path
+            d={`M ${pt(-58, 176)[0]} ${pt(-58, 176)[1]} A 176 176 0 0 1 ${pt(46, 176)[0]} ${pt(46, 176)[1]}`}
+            fill="none"
+            stroke={a}
+            strokeWidth="3.4"
+            strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 8px ${a})` }}
+          />
+          <circle cx={pt(-58, 176)[0]} cy={pt(-58, 176)[1]} r="3.4" fill={a} />
+        </g>
+
+        {/* ---- rotating segmented ring ---- */}
+        <g className={state === "thinking" ? "anim-spin-cw-fast" : "anim-spin-cw"} style={{ transformOrigin: "210px 210px" }}>
+          <circle
+            cx={C} cy={C} r="164" fill="none" stroke={p} strokeOpacity="0.65"
+            strokeWidth="2.2" strokeLinecap="round"
+            strokeDasharray="2 16 84 16 2 16 54 16"
+          />
+        </g>
+
+        {/* ---- counter-rotating fine ring ---- */}
+        <g className="anim-spin-ccw" style={{ transformOrigin: "210px 210px" }}>
+          <circle cx={C} cy={C} r="146" fill="none" stroke={p} strokeOpacity="0.32" strokeWidth="1" strokeDasharray="1.5 8" />
+        </g>
+
+        {/* ---- radial callout lines (where market feeds anchor) ---- */}
+        <g stroke={p} strokeOpacity="0.4">
+          {spokes.map((deg, i) => {
+            const [x1, y1] = pt(deg, 104);
+            const [x2, y2] = pt(deg, 190);
+            const warm = i % 3 === 0;
             return (
-              <line
-                key={i}
-                x1={200 + Math.cos(a) * r1}
-                y1={200 + Math.sin(a) * r1}
-                x2={200 + Math.cos(a) * 190}
-                y2={200 + Math.sin(a) * 190}
-                strokeWidth={major ? 1.6 : 0.7}
-              />
+              <g key={deg}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="0.9" stroke={warm ? a : p} strokeOpacity={warm ? 0.55 : 0.35} />
+                <circle cx={x2} cy={y2} r="2.2" fill={warm ? a : p} fillOpacity="0.8" />
+              </g>
             );
           })}
         </g>
-        <circle cx="200" cy="200" r="168" fill="none" stroke={c} strokeOpacity="0.12" />
 
-        {/* rotating segmented ring */}
-        <g className="anim-spin-cw" style={{ transformOrigin: "200px 200px" }}>
-          <circle
-            cx="200" cy="200" r="150" fill="none" stroke={c} strokeOpacity="0.6"
-            strokeWidth="2" strokeLinecap="round"
-            strokeDasharray="2 20 90 20 2 20 60 20"
-          />
-        </g>
-
-        {/* counter-rotating thin ring */}
-        <g className="anim-spin-ccw" style={{ transformOrigin: "200px 200px" }}>
-          <circle
-            cx="200" cy="200" r="126" fill="none" stroke={c} strokeOpacity="0.35"
-            strokeWidth="1" strokeDasharray="1.5 9"
-          />
-        </g>
-
-        {/* fast reticle when thinking */}
-        <g className={midSpin} style={{ transformOrigin: "200px 200px" }} opacity={state === "thinking" ? 1 : 0.4}>
-          <path
-            d="M200 92 A108 108 0 0 1 293 146"
-            fill="none" stroke={c} strokeOpacity="0.8" strokeWidth="2.5" strokeLinecap="round"
-          />
-          <path
-            d="M200 308 A108 108 0 0 1 107 254"
-            fill="none" stroke={c} strokeOpacity="0.8" strokeWidth="2.5" strokeLinecap="round"
-          />
-        </g>
-
-        {/* hex reticle */}
-        <polygon
-          points="200,120 269,160 269,240 200,280 131,240 131,160"
-          fill="none" stroke={c} strokeOpacity="0.22" strokeWidth="1"
-        />
-
-        {/* amplitude bars (listening / speaking) */}
+        {/* ---- amplitude bars ---- */}
         {emitting && (
-          <g className="anim-spin-cw" style={{ transformOrigin: "200px 200px" }}>
-            {BARS.map((i) => {
-              const a = (i / BARS.length) * Math.PI * 2;
-              const h = 6 + ((i * 37) % 22);
-              return (
-                <line
-                  key={i}
-                  x1={200 + Math.cos(a) * 100}
-                  y1={200 + Math.sin(a) * 100}
-                  x2={200 + Math.cos(a) * (100 + h)}
-                  y2={200 + Math.sin(a) * (100 + h)}
-                  stroke={c}
-                  strokeOpacity="0.5"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-              );
+          <g className="anim-spin-cw" style={{ transformOrigin: "210px 210px" }}>
+            {bars.map((i) => {
+              const deg = (i / bars.length) * 360;
+              const h = 5 + ((i * 41) % 20);
+              const [x1, y1] = pt(deg, 116);
+              const [x2, y2] = pt(deg, 116 + h);
+              return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={p} strokeOpacity="0.5" strokeWidth="2.4" strokeLinecap="round" />;
             })}
           </g>
         )}
 
-        {/* crosshair */}
-        <g stroke={c} strokeOpacity="0.16" strokeWidth="1">
-          <line x1="200" y1="20" x2="200" y2="60" />
-          <line x1="200" y1="340" x2="200" y2="380" />
-          <line x1="20" y1="200" x2="60" y2="200" />
-          <line x1="340" y1="200" x2="380" y2="200" />
+        {/* ---- hex reticle + inner ticks ---- */}
+        <polygon
+          points={[0, 60, 120, 180, 240, 300].map((d) => pt(d - 90, 96).join(",")).join(" ")}
+          fill="none" stroke={p} strokeOpacity="0.22" strokeWidth="1"
+        />
+        <g stroke={p} strokeOpacity="0.3">
+          {innerTicks.map((i) => {
+            const deg = (i / innerTicks.length) * 360;
+            const [x1, y1] = pt(deg, 78);
+            const [x2, y2] = pt(deg, 84);
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="0.7" />;
+          })}
         </g>
+
+        {/* ---- crosshair ---- */}
+        <g stroke={p} strokeOpacity="0.15" strokeWidth="1">
+          <line x1={C} y1="22" x2={C} y2="58" />
+          <line x1={C} y1="362" x2={C} y2="398" />
+          <line x1="22" y1={C} x2="58" y2={C} />
+          <line x1="362" y1={C} x2="398" y2={C} />
+        </g>
+
+        {/* ---- bright hotspot nodes ---- */}
+        <circle cx={pt(224, 164)[0]} cy={pt(224, 164)[1]} r="4" fill={p} style={{ filter: `drop-shadow(0 0 8px ${p})` }} />
+        <circle cx={pt(-12, 164)[0]} cy={pt(-12, 164)[1]} r="3.5" fill={a} style={{ filter: `drop-shadow(0 0 8px ${a})` }} />
       </svg>
 
       {/* core orb + wordmark */}
       <div className="absolute inset-0 grid place-items-center">
         <div
-          className={`relative grid h-[34%] w-[34%] place-items-center rounded-full ${coreAnim}`}
+          className={`relative grid h-[30%] w-[30%] place-items-center rounded-full ${coreAnim}`}
           style={{
-            background: `radial-gradient(circle at 50% 38%, ${c}, ${c}26 56%, transparent 72%)`,
-            boxShadow: `0 0 90px -10px ${c}, inset 0 0 40px -12px ${c}`,
+            background: `radial-gradient(circle at 50% 36%, ${p}, ${p}22 55%, transparent 72%)`,
+            boxShadow: `0 0 100px -8px ${p}, 0 0 40px -6px ${a}66, inset 0 0 44px -14px ${p}`,
           }}
         >
-          <span className="holo font-mono text-[clamp(14px,3.2vw,26px)] font-semibold tracking-[0.34em] text-white/90">
+          <span className="holo font-mono text-[clamp(13px,3vw,24px)] font-semibold tracking-[0.36em] text-white/90">
             JARVIS
           </span>
         </div>
+      </div>
+
+      {/* rim readouts */}
+      <div className="pointer-events-none absolute inset-0">
+        {readouts.slice(0, 4).map((r, i) => {
+          const deg = [-125, -55, 55, 125][i];
+          const [x, y] = pt(deg, 218);
+          return (
+            <div
+              key={r.label}
+              className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center font-mono"
+              style={{ left: `${(x / 420) * 100}%`, top: `${(y / 420) * 100}%` }}
+            >
+              <div className="text-[9px] uppercase tracking-[0.2em] text-jarvis/45">{r.label}</div>
+              <div className="holo text-sm text-jarvis">{r.value}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

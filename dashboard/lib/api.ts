@@ -17,6 +17,7 @@ export type Stats = {
   products: number;
   brands: number;
   tasks_pending: number;
+  power?: "on" | "off";
 };
 
 export type Task = {
@@ -50,6 +51,17 @@ export type Brand = {
   created_at: string;
 };
 
+export type MarketItem = {
+  id: number;
+  ts: string;
+  headline: string;
+  detail: string | null;
+  tag: string | null;
+  sentiment: "positive" | "neutral" | "negative" | null;
+  region: string | null;
+  source: string | null;
+};
+
 export async function createTask(prompt: string, source = "voice"): Promise<Task> {
   const res = await fetch(`${API_BASE}/api/tasks`, {
     method: "POST",
@@ -62,6 +74,14 @@ export async function createTask(prompt: string, source = "voice"): Promise<Task
 
 export async function cancelTask(id: number): Promise<void> {
   await fetch(`${API_BASE}/api/tasks/${id}/cancel`, { method: "POST" });
+}
+
+export async function setPower(state: "on" | "off"): Promise<void> {
+  await fetch(`${API_BASE}/api/power`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
 }
 
 export async function getBrands(): Promise<Brand[]> {

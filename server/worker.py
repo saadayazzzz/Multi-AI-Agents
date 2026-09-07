@@ -82,9 +82,21 @@ def run() -> None:
     init_db()
     print(f"worker: online, polling every {settings.worker_poll_seconds}s")
 
+    powered = True
     while _running:
+        if _power_off():
+            if powered:
+                print("worker: powered down — standing by")
+                powered = False
+            time.sleep(settings.worker_poll_seconds)
+            continue
+        if not powered:
+            print("worker: powered on")
+            powered = True
+
         task = _claim_task()
         if task is None:
+            _maybe_market_pulse()
             time.sleep(settings.worker_poll_seconds)
             continue
 
@@ -107,6 +119,39 @@ def _bind_emit(task_id: int):
         emit(task_id, actor, kind, message, data)
 
     return _e
+
+
+def _power_off() -> bool:
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT power FROM system_state WHERE id = 1").fetchone()
+        return (row or {}).get("power") == "off"
+    except Exception:  # noqa: BLE001 - never let a hiccup wedge the loop
+        return False
+
+
+_started = time.monotonic()
+_last_pulse = 0.0
+
+
+def _maybe_market_pulse() -> None:
+    """Auto-run Agent 5 on an interval while the queue is idle."""
+    global _last_pulse
+    if settings.market_pulse_minutes <= 0:
+        return
+    now = time.monotonic()
+    if _last_pulse == 0.0:
+        if now - _started < 25:  # let the stack settle before the first scan
+            return
+    elif now - _last_pulse < settings.market_pulse_minutes * 60:
+        return
+    _last_pulse = now
+    try:
+        from agents.agent5_market import pulse
+
+        print(f"worker: market pulse -> {pulse()} new items")
+    except Exception as e:  # noqa: BLE001
+        print(f"worker: market pulse failed: {e}")
 
 
 if __name__ == "__main__":

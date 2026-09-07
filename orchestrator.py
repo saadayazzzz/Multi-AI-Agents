@@ -14,6 +14,13 @@ from __future__ import annotations
 import argparse
 import sys
 
+# Windows consoles default to cp1252; agent output (— • ’   …) must not crash logging.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from db import init_db
 from db.database import wait_for_db
 

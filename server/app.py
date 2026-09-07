@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4"]
+_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5"]
 
 
 @app.on_event("startup")
@@ -41,6 +41,20 @@ def _startup() -> None:
 # --------------------------------------------------------------------------- #
 # sync DB helpers (run in a threadpool from async routes)
 # --------------------------------------------------------------------------- #
+def _power() -> str:
+    with get_conn() as conn:
+        row = conn.execute("SELECT power FROM system_state WHERE id = 1").fetchone()
+    return (row or {}).get("power", "on")
+
+
+def _set_power(state: str) -> dict[str, str]:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE system_state SET power = %s, updated_at = now() WHERE id = 1", (state,)
+        )
+    return {"power": state}
+
+
 def _stats() -> dict[str, Any]:
     with get_conn() as conn:
         sites = conn.execute(
@@ -51,12 +65,14 @@ def _stats() -> dict[str, Any]:
         pending = conn.execute(
             "SELECT COUNT(*) n FROM tasks WHERE status IN ('queued','running')"
         ).fetchone()["n"]
+        power = conn.execute("SELECT power FROM system_state WHERE id = 1").fetchone()
     return {
         "sites": {r["status"]: r["n"] for r in sites},
         "sites_total": sum(r["n"] for r in sites),
         "products": products,
         "brands": brands,
         "tasks_pending": pending,
+        "power": (power or {}).get("power", "on"),
     }
 
 
@@ -153,6 +169,32 @@ def _max_event_id() -> int:
     return row["m"]
 
 
+_MARKET_COLS = "id, headline, detail, tag, sentiment, region, source, ts"
+
+
+def _market_after(cursor: int, limit: int = 50) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT {_MARKET_COLS} FROM market_feed WHERE id > %s ORDER BY id LIMIT %s",
+            (cursor, limit),
+        ).fetchall()
+    return [_iso(r) for r in rows]
+
+
+def _recent_market(n: int = 14) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT {_MARKET_COLS} FROM market_feed ORDER BY id DESC LIMIT %s", (n,)
+        ).fetchall()
+    return [_iso(r) for r in reversed(rows)]
+
+
+def _max_market_id() -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM market_feed").fetchone()
+    return row["m"]
+
+
 def _iso(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(row)
     for k, v in list(out.items()):
@@ -167,6 +209,10 @@ def _iso(row: dict[str, Any]) -> dict[str, Any]:
 class TaskIn(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     source: str = "voice"
+
+
+class PowerIn(BaseModel):
+    state: str  # "on" | "off"
 
 
 @app.get("/api/health")
@@ -189,9 +235,23 @@ async def list_tasks(limit: int = 40) -> list[dict[str, Any]]:
     return await run_in_threadpool(_tasks, min(limit, 200))
 
 
+@app.get("/api/market")
+async def market(limit: int = 30) -> list[dict[str, Any]]:
+    return await run_in_threadpool(_recent_market, min(limit, 100))
+
+
 @app.post("/api/tasks", status_code=201)
 async def create_task(body: TaskIn) -> dict[str, Any]:
+    if await run_in_threadpool(_power) == "off":
+        raise HTTPException(409, "JARVIS is powered down")
     return await run_in_threadpool(_create_task, body.prompt.strip(), body.source)
+
+
+@app.post("/api/power")
+async def power(body: PowerIn) -> dict[str, str]:
+    if body.state not in ("on", "off"):
+        raise HTTPException(400, "state must be 'on' or 'off'")
+    return await run_in_threadpool(_set_power, body.state)
 
 
 @app.get("/api/tasks/{task_id}")
@@ -213,20 +273,28 @@ async def brands() -> list[dict[str, Any]]:
 async def ws(sock: WebSocket) -> None:
     await sock.accept()
     cursor = await run_in_threadpool(_max_event_id)
+    mkt_cursor = 0
     tick = 0
     try:
-        # initial snapshot
         await sock.send_text(json.dumps({
             "type": "snapshot",
             "stats": await run_in_threadpool(_stats),
             "agents": await run_in_threadpool(_agents),
             "tasks": await run_in_threadpool(_tasks, 40),
+            "market": await run_in_threadpool(_recent_market, 14),
         }))
+        mkt_cursor = await run_in_threadpool(_max_market_id)
         while True:
             events = await run_in_threadpool(_events_after, cursor)
             if events:
                 cursor = events[-1]["id"]
                 await sock.send_text(json.dumps({"type": "events", "events": events}))
+
+            mkt = await run_in_threadpool(_market_after, mkt_cursor)
+            if mkt:
+                mkt_cursor = mkt[-1]["id"]
+                await sock.send_text(json.dumps({"type": "market", "items": mkt}))
+
             tick += 1
             if tick % 4 == 0:  # ~ every 2s
                 await sock.send_text(json.dumps({

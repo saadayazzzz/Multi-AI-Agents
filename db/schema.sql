@@ -101,6 +101,29 @@ CREATE TABLE IF NOT EXISTS task_events (
 CREATE INDEX IF NOT EXISTS idx_task_events_stream ON task_events (id);
 CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events (task_id, id);
 
+-- Single-row power switch for the whole system (toggled from the console).
+CREATE TABLE IF NOT EXISTS system_state (
+    id         INT PRIMARY KEY DEFAULT 1,
+    power      TEXT NOT NULL DEFAULT 'on',   -- on | off
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT system_state_singleton CHECK (id = 1)
+);
+INSERT INTO system_state (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Agent 5: rolling feed of worldwide skincare / cosmetics market developments.
+CREATE TABLE IF NOT EXISTS market_feed (
+    id         BIGSERIAL PRIMARY KEY,
+    ts         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    headline   TEXT NOT NULL,
+    detail     TEXT,
+    tag        TEXT,        -- launch | trend | m&a | retail | regulation | ingredient | macro
+    sentiment  TEXT,        -- positive | neutral | negative
+    region     TEXT,
+    source     TEXT,
+    UNIQUE (headline)
+);
+CREATE INDEX IF NOT EXISTS idx_market_feed_id ON market_feed (id);
+
 -- Agent 4: one generated product image per (brand, product).
 CREATE TABLE IF NOT EXISTS generated_images (
     id            SERIAL PRIMARY KEY,

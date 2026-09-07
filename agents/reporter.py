@@ -32,4 +32,7 @@ def report(message: str = "", *, kind: str = "log", actor: Optional[str] = None,
         except Exception:  # never let logging break a run
             pass
     if message:
-        print(message)
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            print(message.encode("ascii", "replace").decode("ascii"))

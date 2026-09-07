@@ -8,16 +8,19 @@ export function CommandBar({
   interim,
   onMic,
   onSubmitText,
+  disabled = false,
 }: {
   supported: boolean;
   listening: boolean;
   interim: string;
   onMic: () => void;
   onSubmitText: (text: string) => void;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState("");
 
   const send = () => {
+    if (disabled) return;
     const t = text.trim();
     if (!t) return;
     onSubmitText(t);
@@ -36,7 +39,7 @@ export function CommandBar({
 
       <button
         onClick={onMic}
-        disabled={!supported}
+        disabled={!supported || disabled}
         title={supported ? "Click, then speak" : "Voice unsupported in this browser"}
         className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border transition ${
           listening
@@ -54,14 +57,20 @@ export function CommandBar({
         value={listening ? interim || "listening…" : text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && send()}
-        readOnly={listening}
-        placeholder="Ask JARVIS…  “find fresh sites, scrape them, rebuild the store with images”"
-        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-jarvis outline-none placeholder:text-jarvis/30"
+        readOnly={listening || disabled}
+        placeholder={
+          disabled
+            ? "JARVIS is powered down — press ⏻ to bring it back online"
+            : "Ask JARVIS…  “find fresh sites, scrape them, rebuild the store with images”"
+        }
+        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-jarvis outline-none placeholder:text-jarvis/30 disabled:opacity-40"
+        disabled={disabled}
       />
 
       <button
         onClick={send}
-        className="shrink-0 rounded border border-jarvis/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-jarvis/80 transition hover:bg-jarvis/10 hover:text-jarvis"
+        disabled={disabled}
+        className="shrink-0 rounded border border-jarvis/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-jarvis/80 transition hover:bg-jarvis/10 hover:text-jarvis disabled:cursor-not-allowed disabled:opacity-30"
       >
         Send
       </button>

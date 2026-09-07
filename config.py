@@ -31,6 +31,9 @@ class Settings:
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
     max_images: int = int(os.getenv("MAX_IMAGES", "24"))
 
+    # Agent 5 — worldwide market pulse. 0 disables the automatic feed.
+    market_pulse_minutes: int = int(os.getenv("MARKET_PULSE_MINUTES", "25"))
+
     database_url: str = os.getenv(
         "DATABASE_URL", "postgresql://maai:maai@localhost:5432/maai"
     )

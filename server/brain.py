@@ -26,6 +26,8 @@ You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
     Next.js storefront on disk.
   - Agent 4 generates a product photo for each product in the built store and
     drops it into the site.
+  - Agent 5 scans the worldwide skincare / cosmetics market via web search and
+    pushes fresh developments into the live feed.
 
 The user talks to you by voice and may be away while you work. Interpret the
 request, call whatever tools are needed, and chain them for multi-step asks
@@ -80,6 +82,13 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "market_pulse",
+        "description": "Run Agent 5: pull the latest worldwide skincare/cosmetics market "
+        "developments via web search into the live feed. Use for 'what's happening in "
+        "the market', 'refresh the feed', 'any beauty news'.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "get_status",
         "description": "Return counts of sites (by status), products, and generated brands.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -105,6 +114,7 @@ _ACTOR_FOR = {
     "scrape_sites": "agent2",
     "build_brand": "agent3",
     "generate_product_images": "agent4",
+    "market_pulse": "agent5",
 }
 
 
@@ -150,6 +160,10 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
                 f"Agent 4: {r['generated']} product photos "
                 f"({r['placeholders']} placeholders) for '{r['slug']}' in {r['path']}."
             )
+        if name == "market_pulse":
+            from agents.agent5_market import pulse
+
+            return f"Agent 5: {pulse()} fresh market items added to the feed."
         if name == "get_status":
             return _status_text()
         if name == "schedule_recurring":

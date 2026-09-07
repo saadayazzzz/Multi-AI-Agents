@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTask } from "@/lib/api";
+import { createTask, setPower } from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
 import { JarvisCore, type CoreState } from "@/components/JarvisCore";
 import { HudPanel, type Corner } from "@/components/HudPanel";
 import { TetherLines } from "@/components/TetherLines";
+import { MarketFeed } from "@/components/MarketFeed";
+import { CoreCallouts } from "@/components/CoreCallouts";
 import { AgentGrid } from "@/components/AgentGrid";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
@@ -22,20 +24,38 @@ const CORE_COPY: Record<CoreState, string> = {
 };
 
 export default function Console() {
-  const { connected, stats, agents, tasks, events, latestSpoken } = useJarvis();
+  const { connected, stats, agents, tasks, events, market, latestSpoken } = useJarvis();
   const voice = useVoice();
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [pulse, setPulse] = useState(false);
   const [flash, setFlash] = useState(0);
+  const [localPower, setLocalPower] = useState<"on" | "off" | null>(null);
   const spokenId = useRef(0);
   const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const power = localPower ?? stats?.power ?? "on";
+  const off = power === "off";
+
+  useEffect(() => {
+    if (localPower && stats?.power === localPower) setLocalPower(null);
+  }, [stats?.power, localPower]);
+
+  const togglePower = async () => {
+    const next = off ? "on" : "off";
+    setLocalPower(next);
+    try {
+      await setPower(next);
+    } catch {
+      /* snapshot will correct on reconnect */
+    }
+  };
 
   const busy = useMemo(
     () => tasks.some((t) => t.status === "running" || t.status === "queued"),
     [tasks],
   );
-  const hudActive = pinned || busy || events.length > 0 || pulse;
+  const hudActive = !off && (pinned || busy || events.length > 0 || pulse);
 
   // Panels unfold one at a time in this order, each ~0.5s after the previous.
   const ORDER: Corner[] = ["tr", "tl", "br", "bl"];
@@ -83,6 +103,7 @@ export default function Console() {
 
   useEffect(() => {
     voice.onResult(async (text) => {
+      if (off) return;
       reveal();
       try {
         await createTask(text, "voice");
@@ -91,9 +112,10 @@ export default function Console() {
         if (!muted) voice.speak("I could not reach the control plane.");
       }
     });
-  }, [voice, muted, reveal]);
+  }, [voice, muted, reveal, off]);
 
   const submitText = async (text: string) => {
+    if (off) return;
     reveal();
     try {
       await createTask(text, "text");
@@ -102,7 +124,7 @@ export default function Console() {
     }
   };
 
-  const coreState: CoreState = !connected
+  const coreState: CoreState = off || !connected
     ? "offline"
     : voice.listening
       ? "listening"
@@ -123,6 +145,10 @@ export default function Console() {
       {/* beams from core -> panels (drawn one at a time) */}
       <TetherLines shown={shown} />
 
+      {/* worldwide market feed — mini headlines on the core's radial lines + bottom ticker */}
+      <CoreCallouts items={off ? [] : market} />
+      <MarketFeed items={off ? [] : market} />
+
       {/* top bar */}
       <header className="pointer-events-auto absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-3">
         <div className="flex items-baseline gap-3">
@@ -136,24 +162,52 @@ export default function Console() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMuted((m) => !m)}
-            className={`chip ${muted ? "opacity-50" : ""}`}
+            disabled={off}
+            className={`chip ${muted ? "opacity-50" : ""} disabled:opacity-30`}
           >
             {muted ? "voice off" : "voice on"}
           </button>
           <button
             onClick={() => setPinned((p) => !p)}
-            className={`chip ${pinned ? "bg-jarvis/20 text-jarvis" : "opacity-60"}`}
+            disabled={off}
+            className={`chip ${pinned ? "bg-jarvis/20 text-jarvis" : "opacity-60"} disabled:opacity-30`}
           >
             {pinned ? "panels pinned" : "pin panels"}
           </button>
-          <span className={`chip ${connected ? "" : "border-jarvis-red/40 text-jarvis-red"}`}>
+          <span
+            className={`chip ${
+              off
+                ? "border-jarvis-red/50 text-jarvis-red"
+                : connected
+                  ? ""
+                  : "border-jarvis-red/40 text-jarvis-red"
+            }`}
+          >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                connected ? "bg-jarvis anim-blip" : "bg-jarvis-red"
+                off
+                  ? "bg-jarvis-red"
+                  : connected
+                    ? "bg-jarvis anim-blip"
+                    : "bg-jarvis-red"
               }`}
             />
-            {connected ? "online" : "offline"}
+            {off ? "powered down" : connected ? "online" : "offline"}
           </span>
+          <button
+            onClick={togglePower}
+            title={off ? "Power on JARVIS" : "Shut JARVIS down"}
+            className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border transition ${
+              off
+                ? "border-jarvis-red bg-jarvis-red/10 text-jarvis-red anim-blip"
+                : "border-jarvis/50 text-jarvis hover:bg-jarvis/15"
+            }`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+              <path d="M12 3v9" />
+              <path d="M6.6 6.6a9 9 0 1 0 10.8 0" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -180,14 +234,30 @@ export default function Console() {
           step > 0 ? "scale-[0.9]" : ""
         }`}
       >
-        <JarvisCore state={coreState} />
-        <div className="flex h-5 items-center gap-2">
-          <span className="label holo">{CORE_COPY[coreState]}</span>
-          {voice.listening && voice.interim && (
-            <span className="row-in max-w-sm truncate font-mono text-xs text-jarvis-amber">
-              “{voice.interim}”
+        <div
+          className={`flex flex-col items-center gap-5 transition-all duration-500 ${
+            off ? "opacity-25 grayscale" : ""
+          }`}
+        >
+          <JarvisCore
+            state={coreState}
+            readouts={[
+              { label: "Sites", value: stats?.sites_total ?? "–" },
+              { label: "Products", value: stats?.products ?? "–" },
+              { label: "Tasks", value: tasks.length },
+              { label: "Feed", value: market.length },
+            ]}
+          />
+          <div className="flex h-5 items-center gap-2">
+            <span className="label holo">
+              {off ? "Powered down" : CORE_COPY[coreState]}
             </span>
-          )}
+            {voice.listening && voice.interim && (
+              <span className="row-in max-w-sm truncate font-mono text-xs text-jarvis-amber">
+                “{voice.interim}”
+              </span>
+            )}
+          </div>
         </div>
         <CommandBar
           supported={voice.supported}
@@ -195,6 +265,7 @@ export default function Console() {
           interim={voice.interim}
           onMic={() => (voice.listening ? voice.stop() : voice.listenOnce())}
           onSubmitText={submitText}
+          disabled={off}
         />
         {!voice.supported && (
           <span className="font-mono text-[10px] text-jarvis/30">
