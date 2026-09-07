@@ -31,6 +31,10 @@ You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
     developments into the live feed.
   - Agent 6 (AI Search Visibility) checks whether a brand shows up in AI answer
     engines for its buyers' questions, versus competitors, and scores it 0-100.
+  - Agent 7 (Outbound Sales) prospects ICP-matched companies, finds the
+    decision-maker, runs Agent 6 on each prospect's own brand, drafts a
+    personalised cold-email sequence built around that visibility finding,
+    tracks the pipeline, and exports to leads.xlsx.
 
 The user talks to you by voice and may be away while you work. Interpret the
 request, call whatever tools are needed, and chain them for multi-step asks
@@ -105,6 +109,26 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "run_outreach",
+        "description": "Run Agent 7 (outbound sales): prospect ICP-matched companies, "
+        "find the decision-maker, run the AI-visibility tool on each prospect, draft a "
+        "personalised cold-email sequence, track the pipeline and export to leads.xlsx. "
+        "Reuses the last campaign if one exists; otherwise needs `icp` and `offer`. Set "
+        "send=true to also email them (requires SMTP configured). Use for 'find me "
+        "clients', 'do outreach', 'run a sales cycle'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "icp": {"type": "string", "description": "ideal customer profile"},
+                "offer": {"type": "string", "description": "the pitch, one paragraph"},
+                "prospect": {"type": "integer", "description": "new companies this cycle (default 4)"},
+                "geo_queries": {"type": "integer", "description": "visibility queries per lead (default 4)"},
+                "send": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "market_pulse",
         "description": "Run Agent 5: pull the latest AI-search / GEO industry developments "
         "via web search into the live feed (answer-engine changes, adoption shifts, GEO "
@@ -140,6 +164,7 @@ _ACTOR_FOR = {
     "generate_product_images": "agent4",
     "market_pulse": "agent5",
     "check_ai_visibility": "geo",
+    "run_outreach": "sales",
 }
 
 
@@ -189,6 +214,36 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
             from agents.agent5_market import pulse
 
             return f"Agent 5: {pulse()} fresh market items added to the feed."
+        if name == "run_outreach":
+            from geo.db import init_geo_db
+            from outreach.db import init_outreach_db
+            from outreach.pipeline import create_campaign, run_cycle
+
+            init_geo_db()
+            init_outreach_db()
+            with get_conn() as conn:
+                camp = conn.execute(
+                    "SELECT id FROM campaigns ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+            if not camp:
+                if not (args.get("icp") and args.get("offer")):
+                    return "Need an ICP and an offer to start the first campaign."
+                cid = create_campaign(
+                    "jarvis", args["icp"], args["offer"], "Saad", None, 20
+                )
+            else:
+                cid = camp["id"]
+            n = max(2, min(int(args.get("prospect") or 4), 12))
+            gq = max(2, min(int(args.get("geo_queries") or 4), 10))
+            res = run_cycle(cid, prospect_n=n, geo_queries=gq, send=bool(args.get("send")))
+            p = res["pipeline"]
+            sent = (
+                f"Sent {res['sent']} emails. " if res["sent"] else "Drafts ready for review. "
+            )
+            return (
+                f"Outreach cycle done: {res['found']} new leads. Pipeline {p}. "
+                f"{sent}Exported to {res['xlsx']}."
+            )
         if name == "check_ai_visibility":
             from geo.db import init_geo_db
             from geo.pipeline import create_project, gen_queries, run_probe

@@ -129,3 +129,33 @@ export async function getGeoLatest(): Promise<GeoLatest | null> {
     return null; // API briefly unreachable (restart etc.) — recover on next poll
   }
 }
+
+export type OutreachLead = {
+  id: number;
+  company: string;
+  domain: string | null;
+  contact_role: string | null;
+  contact_email: string | null;
+  email_status: string;
+  icp_fit: number | null;
+  geo_score: number | null;
+  geo_finding: string | null;
+  status: string;
+};
+
+export type OutreachLatest = {
+  campaign: { id: number; name: string; icp: string; offer: string };
+  counts: Record<string, number>;
+  total: number;
+  leads: OutreachLead[];
+  sample: { company: string; subject: string; body: string } | null;
+};
+
+export async function getOutreachLatest(): Promise<OutreachLatest | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/outreach/latest`, { cache: "no-store" });
+    return res.ok ? res.json() : null;
+  } catch {
+    return null;
+  }
+}

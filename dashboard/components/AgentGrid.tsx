@@ -10,8 +10,9 @@ const NAMES: Record<string, [string, string]> = {
   agent4: ["Agent 4", "Product Imagery"],
   agent5: ["Agent 5", "AI Search Pulse"],
   geo: ["Agent 6", "AI Visibility"],
+  sales: ["Agent 7", "Outbound Sales"],
 };
-const ORDER = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5", "geo"];
+const ORDER = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5", "geo", "sales"];
 
 export function AgentGrid({ agents, busy }: { agents: AgentState[]; busy: boolean }) {
   const rows = ORDER.map(

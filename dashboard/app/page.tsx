@@ -14,6 +14,7 @@ import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
 import { Analytics } from "@/components/Analytics";
 import { GeoScore } from "@/components/GeoScore";
+import { OutreachPanel } from "@/components/OutreachPanel";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -227,7 +228,9 @@ export default function Console() {
         <Analytics stats={stats} tasks={tasks} />
       </HudPanel>
 
-      <HudPanel corner="bl" open={isOpen("bl")} title="Tasks" count={tasks.length}>
+      <HudPanel corner="bl" open={isOpen("bl")} title="Pipeline · Tasks" count={tasks.length}>
+        <OutreachPanel />
+        <div className="border-t border-jarvis/15" />
         <TaskQueue tasks={tasks} />
       </HudPanel>
 
