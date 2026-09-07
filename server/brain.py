@@ -26,8 +26,9 @@ You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
     Next.js storefront on disk.
   - Agent 4 generates a product photo for each product in the built store and
     drops it into the site.
-  - Agent 5 scans the worldwide skincare / cosmetics market via web search and
-    pushes fresh developments into the live feed.
+  - Agent 5 scans the AI-search / GEO industry via web search (answer-engine
+    changes, adoption shifts, GEO tools, citation studies) and pushes fresh
+    developments into the live feed.
   - Agent 6 (AI Search Visibility) checks whether a brand shows up in AI answer
     engines for its buyers' questions, versus competitors, and scores it 0-100.
 
@@ -105,9 +106,10 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "market_pulse",
-        "description": "Run Agent 5: pull the latest worldwide skincare/cosmetics market "
-        "developments via web search into the live feed. Use for 'what's happening in "
-        "the market', 'refresh the feed', 'any beauty news'.",
+        "description": "Run Agent 5: pull the latest AI-search / GEO industry developments "
+        "via web search into the live feed (answer-engine changes, adoption shifts, GEO "
+        "tools, citation studies). Use for 'what's happening in AI search', 'GEO news', "
+        "'refresh the feed'.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {

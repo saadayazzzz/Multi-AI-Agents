@@ -85,8 +85,12 @@ export async function setPower(state: "on" | "off"): Promise<void> {
 }
 
 export async function getBrands(): Promise<Brand[]> {
-  const res = await fetch(`${API_BASE}/api/brands`, { cache: "no-store" });
-  return res.ok ? res.json() : [];
+  try {
+    const res = await fetch(`${API_BASE}/api/brands`, { cache: "no-store" });
+    return res.ok ? res.json() : [];
+  } catch {
+    return [];
+  }
 }
 
 export type GeoQuery = {
@@ -118,7 +122,10 @@ export type GeoLatest = {
 };
 
 export async function getGeoLatest(): Promise<GeoLatest | null> {
-  const res = await fetch(`${API_BASE}/api/geo/latest`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/geo/latest`, { cache: "no-store" });
+    return res.ok ? res.json() : null;
+  } catch {
+    return null; // API briefly unreachable (restart etc.) — recover on next poll
+  }
 }

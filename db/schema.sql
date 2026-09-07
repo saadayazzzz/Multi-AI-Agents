@@ -110,13 +110,13 @@ CREATE TABLE IF NOT EXISTS system_state (
 );
 INSERT INTO system_state (id) VALUES (1) ON CONFLICT DO NOTHING;
 
--- Agent 5: rolling feed of worldwide skincare / cosmetics market developments.
+-- Agent 5: rolling feed of AI-search / GEO industry developments.
 CREATE TABLE IF NOT EXISTS market_feed (
     id         BIGSERIAL PRIMARY KEY,
     ts         TIMESTAMPTZ NOT NULL DEFAULT now(),
     headline   TEXT NOT NULL,
     detail     TEXT,
-    tag        TEXT,        -- launch | trend | m&a | retail | regulation | ingredient | macro
+    tag        TEXT,        -- platform | shift | tool | funding | study | regulation | tactic
     sentiment  TEXT,        -- positive | neutral | negative
     region     TEXT,
     source     TEXT,

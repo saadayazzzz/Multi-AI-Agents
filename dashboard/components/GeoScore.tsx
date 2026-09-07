@@ -12,7 +12,12 @@ export function GeoScore() {
 
   useEffect(() => {
     let alive = true;
-    const load = () => getGeoLatest().then((d) => alive && setData(d));
+    const load = () =>
+      getGeoLatest()
+        .then((d) => {
+          if (alive && d) setData(d);
+        })
+        .catch(() => {});
     load();
     const iv = setInterval(load, 4000);
     return () => {

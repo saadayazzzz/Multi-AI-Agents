@@ -20,7 +20,7 @@ export function MarketFeed({ items }: { items: MarketItem[] }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-6 items-center overflow-hidden border-t border-jarvis/15 bg-black/45">
       <span className="shrink-0 border-r border-jarvis/20 px-2 font-mono text-[9px] uppercase tracking-[0.2em] text-jarvis/50">
-        world market
+        ai search pulse
       </span>
       <div
         className="anim-ticker whitespace-nowrap pl-6 font-mono text-[10px] tracking-wide text-jarvis/55"
