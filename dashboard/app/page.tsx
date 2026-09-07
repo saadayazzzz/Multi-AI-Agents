@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTask, setPower } from "@/lib/api";
+import {
+  createTask,
+  getGeoLatest,
+  getOutreachLatest,
+  setPower,
+  type GeoLatest,
+  type OutreachLatest,
+} from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
 import { JarvisCore, type CoreState } from "@/components/JarvisCore";
@@ -33,7 +40,23 @@ export default function Console() {
   const [pulse, setPulse] = useState(false);
   const [flash, setFlash] = useState(0);
   const [localPower, setLocalPower] = useState<"on" | "off" | null>(null);
+  const [geo, setGeo] = useState<GeoLatest | null>(null);
+  const [outreach, setOutreach] = useState<OutreachLatest | null>(null);
   const spokenId = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      getGeoLatest().then((d) => alive && d && setGeo(d)).catch(() => {});
+      getOutreachLatest().then((d) => alive && d && setOutreach(d)).catch(() => {});
+    };
+    load();
+    const iv = setInterval(load, 5000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, []);
   const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const power = localPower ?? stats?.power ?? "on";
@@ -248,9 +271,12 @@ export default function Console() {
           <JarvisCore
             state={coreState}
             readouts={[
-              { label: "Sites", value: stats?.sites_total ?? "–" },
-              { label: "Products", value: stats?.products ?? "–" },
-              { label: "Tasks", value: tasks.length },
+              {
+                label: "Score",
+                value: geo ? Number(geo.score.score).toFixed(0) : "–",
+              },
+              { label: "Leads", value: outreach?.total ?? "–" },
+              { label: "Sent", value: outreach?.counts?.sent ?? 0 },
               { label: "Feed", value: market.length },
             ]}
           />
