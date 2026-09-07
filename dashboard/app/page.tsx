@@ -255,8 +255,10 @@ export default function Console() {
             ]}
           />
           <div className="flex h-5 items-center gap-2">
-            <span className="label holo">
-              {off ? "Powered down" : CORE_COPY[coreState]}
+            <span
+              className={`label holo ${coreState === "speaking" ? "anim-label-blink text-jarvis-soft" : ""}`}
+            >
+              {off ? "Powered down" : coreState === "speaking" ? "◂ Speaking ▸" : CORE_COPY[coreState]}
             </span>
             {voice.listening && voice.interim && (
               <span className="row-in max-w-sm truncate font-mono text-xs text-jarvis-amber">

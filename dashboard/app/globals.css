@@ -108,6 +108,22 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+/* pronounced "it's talking" heartbeat for the core orb */
+@keyframes speak-beat {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  22% { transform: scale(1.16); filter: brightness(1.6); }
+  45% { transform: scale(0.97); filter: brightness(1.05); }
+  70% { transform: scale(1.07); filter: brightness(1.3); }
+}
+/* fast expanding rings while speaking */
+@keyframes speak-ring {
+  0% { transform: scale(0.72); opacity: 0.85; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+@keyframes label-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.2; }
+}
 @keyframes scan-sweep {
   0% { transform: translateY(-100%); opacity: 0; }
   12% { opacity: 0.9; }
@@ -148,11 +164,13 @@ body {
 .anim-spin-ccw { animation: spin-ccw 18s linear infinite; transform-origin: center; }
 .anim-core-idle { animation: core-breathe 5s ease-in-out infinite; }
 .anim-core-think { animation: core-breathe 1s ease-in-out infinite; }
-.anim-core-speak { animation: core-breathe 0.4s ease-in-out infinite; }
+.anim-core-speak { animation: speak-beat 0.5s ease-in-out infinite; }
 .anim-reactor-glow { animation: reactor-glow 3.5s ease-in-out infinite; }
 .anim-blip { animation: blip 1.1s ease-in-out infinite; }
 .anim-emit { animation: emit 1.6s ease-out infinite; }
 .anim-emit-2 { animation: emit 1.6s ease-out infinite 0.8s; }
+.anim-speak-ring { animation: speak-ring 0.6s ease-out infinite; }
+.anim-label-blink { animation: label-blink 0.5s steps(1, end) infinite; }
 
 .panel-in-left { animation: panel-in-left 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
 .panel-in-right { animation: panel-in-right 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) both; }

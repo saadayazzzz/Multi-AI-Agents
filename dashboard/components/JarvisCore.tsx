@@ -45,17 +45,37 @@ export function JarvisCore({
       : state === "speaking"
         ? "anim-core-speak"
         : "anim-core-idle";
-  const emitting = state === "speaking" || state === "listening";
+  const speaking = state === "speaking";
+  const emitting = speaking || state === "listening";
 
   return (
     <div
       className="relative aspect-square w-[min(82vw,64vh,600px)] select-none"
       style={{ color: p }}
     >
-      {emitting && (
+      {/* listening: slow ripples */}
+      {state === "listening" && (
         <>
           <span className="anim-emit absolute inset-[20%] rounded-full border" style={{ borderColor: p }} />
           <span className="anim-emit-2 absolute inset-[20%] rounded-full border" style={{ borderColor: p }} />
+        </>
+      )}
+
+      {/* speaking: fast bright heartbeat rings */}
+      {speaking && (
+        <>
+          <span
+            className="anim-speak-ring absolute inset-[26%] rounded-full border-2"
+            style={{ borderColor: p, boxShadow: `0 0 24px ${p}` }}
+          />
+          <span
+            className="anim-speak-ring absolute inset-[26%] rounded-full border-2"
+            style={{ borderColor: p, animationDelay: "0.2s" }}
+          />
+          <span
+            className="anim-speak-ring absolute inset-[26%] rounded-full border"
+            style={{ borderColor: a, animationDelay: "0.4s" }}
+          />
         </>
       )}
 
@@ -164,7 +184,9 @@ export function JarvisCore({
           className={`relative grid h-[30%] w-[30%] place-items-center rounded-full ${coreAnim}`}
           style={{
             background: `radial-gradient(circle at 50% 36%, ${p}, ${p}22 55%, transparent 72%)`,
-            boxShadow: `0 0 100px -8px ${p}, 0 0 40px -6px ${a}66, inset 0 0 44px -14px ${p}`,
+            boxShadow: speaking
+              ? `0 0 160px -4px ${p}, 0 0 70px -6px ${a}, inset 0 0 50px -10px ${p}`
+              : `0 0 100px -8px ${p}, 0 0 40px -6px ${a}66, inset 0 0 44px -14px ${p}`,
           }}
         >
           <span className="holo font-mono text-[clamp(13px,3vw,24px)] font-semibold tracking-[0.36em] text-white/90">
