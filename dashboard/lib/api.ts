@@ -88,3 +88,37 @@ export async function getBrands(): Promise<Brand[]> {
   const res = await fetch(`${API_BASE}/api/brands`, { cache: "no-store" });
   return res.ok ? res.json() : [];
 }
+
+export type GeoQuery = {
+  text: string;
+  intent: string | null;
+  brand_mentioned: boolean;
+  brand_position: number | null;
+  brand_recommended: boolean;
+  sentiment: string | null;
+  competitor_mentions: string[];
+};
+
+export type GeoLatest = {
+  score: {
+    brand: string;
+    domain: string | null;
+    competitors: string[];
+    engine: string;
+    score: number;
+    presence_rate: number;
+    citation_rate: number;
+    reco_rate: number;
+    share_of_voice: number;
+    avg_position: number | null;
+    detail: { per_competitor_hits: Record<string, number> };
+    computed_at: string;
+  };
+  queries: GeoQuery[];
+};
+
+export async function getGeoLatest(): Promise<GeoLatest | null> {
+  const res = await fetch(`${API_BASE}/api/geo/latest`, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}

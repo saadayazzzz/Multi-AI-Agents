@@ -28,6 +28,8 @@ You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
     drops it into the site.
   - Agent 5 scans the worldwide skincare / cosmetics market via web search and
     pushes fresh developments into the live feed.
+  - Agent 6 (AI Search Visibility) checks whether a brand shows up in AI answer
+    engines for its buyers' questions, versus competitors, and scores it 0-100.
 
 The user talks to you by voice and may be away while you work. Interpret the
 request, call whatever tools are needed, and chain them for multi-step asks
@@ -82,6 +84,26 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "check_ai_visibility",
+        "description": "Run Agent 6: measure how visible a brand is in AI answer "
+        "engines vs competitors. Generates realistic buyer queries, probes an answer "
+        "engine with web search, and returns a 0-100 Visibility Score with the "
+        "breakdown. Use for 'how visible is X in ChatGPT / AI search', 'GEO check', "
+        "'are we cited in AI answers'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "brand": {"type": "string"},
+                "category": {"type": "string", "description": "product category, e.g. 'SEO tools'"},
+                "domain": {"type": "string"},
+                "competitors": {"type": "array", "items": {"type": "string"}},
+                "queries": {"type": "integer", "description": "how many queries to probe (default 8)"},
+            },
+            "required": ["brand", "category"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "market_pulse",
         "description": "Run Agent 5: pull the latest worldwide skincare/cosmetics market "
         "developments via web search into the live feed. Use for 'what's happening in "
@@ -115,6 +137,7 @@ _ACTOR_FOR = {
     "build_brand": "agent3",
     "generate_product_images": "agent4",
     "market_pulse": "agent5",
+    "check_ai_visibility": "geo",
 }
 
 
@@ -164,6 +187,38 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
             from agents.agent5_market import pulse
 
             return f"Agent 5: {pulse()} fresh market items added to the feed."
+        if name == "check_ai_visibility":
+            from geo.db import init_geo_db
+            from geo.pipeline import create_project, gen_queries, run_probe
+
+            init_geo_db()
+            brand = args["brand"]
+            n = max(6, min(int(args.get("queries") or 8), 20))
+            with get_conn() as conn:
+                existing = conn.execute(
+                    "SELECT id FROM projects WHERE lower(brand) = lower(%s) "
+                    "ORDER BY id DESC LIMIT 1",
+                    (brand,),
+                ).fetchone()
+            pid = (
+                existing["id"]
+                if existing
+                else create_project(
+                    "jarvis", brand, args["category"],
+                    args.get("domain"), args.get("competitors") or [],
+                )
+            )
+            gen_queries(pid, n=max(n, 14))
+            _run_id, sc = run_probe(pid, engine="openai", samples=1, limit=n)
+            lead = sorted(sc["per_competitor_hits"].items(), key=lambda kv: -kv[1])[:3]
+            comp = ", ".join(f"{k} {v}" for k, v in lead) or "none named"
+            return (
+                f"{brand} AI Search Visibility score: {sc['score']}/100. "
+                f"Appears in {sc['presence_rate']:.0%} of answers, average position "
+                f"{sc['avg_position']}, recommended {sc['reco_rate']:.0%}, "
+                f"share-of-voice {sc['share_of_voice']:.0%}. "
+                f"Top competitors by mentions: {comp}."
+            )
         if name == "get_status":
             return _status_text()
         if name == "schedule_recurring":

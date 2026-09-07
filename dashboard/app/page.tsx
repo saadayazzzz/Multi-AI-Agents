@@ -13,6 +13,7 @@ import { AgentGrid } from "@/components/AgentGrid";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
 import { Analytics } from "@/components/Analytics";
+import { GeoScore } from "@/components/GeoScore";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -220,7 +221,9 @@ export default function Console() {
         <AgentGrid agents={agents} busy={busy} />
       </HudPanel>
 
-      <HudPanel corner="br" open={isOpen("br")} title="Analytics">
+      <HudPanel corner="br" open={isOpen("br")} title="Visibility · Analytics">
+        <GeoScore />
+        <div className="border-t border-jarvis/15" />
         <Analytics stats={stats} tasks={tasks} />
       </HudPanel>
 

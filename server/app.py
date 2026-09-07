@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5"]
+_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5", "geo"]
 
 
 @app.on_event("startup")
@@ -238,6 +238,34 @@ async def list_tasks(limit: int = 40) -> list[dict[str, Any]]:
 @app.get("/api/market")
 async def market(limit: int = 30) -> list[dict[str, Any]]:
     return await run_in_threadpool(_recent_market, min(limit, 100))
+
+
+def _geo_latest() -> dict[str, Any] | None:
+    with get_conn() as conn:
+        sc = conn.execute(
+            """
+            SELECT s.*, p.brand, p.domain, p.competitors
+            FROM visibility_scores s JOIN projects p ON p.id = s.project_id
+            ORDER BY s.id DESC LIMIT 1
+            """
+        ).fetchone()
+        if not sc:
+            return None
+        rows = conn.execute(
+            """
+            SELECT q.text, q.intent, pr.brand_mentioned, pr.brand_position,
+                   pr.brand_recommended, pr.sentiment, pr.competitor_mentions
+            FROM probes pr JOIN queries q ON q.id = pr.query_id
+            WHERE pr.run_id = %s ORDER BY pr.id
+            """,
+            (sc["run_id"],),
+        ).fetchall()
+    return {"score": _iso(sc), "queries": [_iso(r) for r in rows]}
+
+
+@app.get("/api/geo/latest")
+async def geo_latest() -> dict[str, Any] | None:
+    return await run_in_threadpool(_geo_latest)
 
 
 @app.post("/api/tasks", status_code=201)

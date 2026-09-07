@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agents.reporter import report  # generic pluggable logger; falls back to print()
 from db.database import get_conn
 from geo.engines import check_engine
 from geo.generate import generate_queries
@@ -74,7 +75,7 @@ def run_probe(
         ).fetchone()["id"]
 
     total = len(qs) * samples
-    print(f"geo: run {run_id} — {len(qs)} queries x {samples} sample(s) = {total} probes on '{engine}'")
+    report(f"geo: run {run_id} — {len(qs)} queries x {samples} sample(s) = {total} probes on '{engine}'")
     done = 0
     for q in qs:
         for s in range(1, samples + 1):
@@ -83,9 +84,9 @@ def run_probe(
                 r = probe_query(engine, q, proj, run_id, s)
                 mark = "HIT " if r["brand_mentioned"] else "miss"
                 pos = f" #{r['brand_position']}" if r["brand_position"] else ""
-                print(f"  [{done}/{total}] {mark}{pos}  {q['text'][:64]}")
+                report(f"  [{done}/{total}] {mark}{pos}  {q['text'][:64]}")
             except Exception as e:  # noqa: BLE001
-                print(f"  [{done}/{total}] ERR  {q['text'][:48]} -- {e}")
+                report(f"  [{done}/{total}] ERR  {q['text'][:48]} -- {e}")
 
     with get_conn() as conn:
         conn.execute(
@@ -94,7 +95,7 @@ def run_probe(
         )
 
     sc = compute_scores(run_id)
-    print(
+    report(
         f"\ngeo: VISIBILITY SCORE  {sc['score']}/100\n"
         f"  presence {sc['presence_rate']:.0%}  |  cited {sc['citation_rate']:.0%}  |  "
         f"recommended {sc['reco_rate']:.0%}  |  share-of-voice {sc['share_of_voice']:.0%}"
@@ -102,5 +103,5 @@ def run_probe(
     )
     if sc["per_competitor_hits"]:
         ranked = sorted(sc["per_competitor_hits"].items(), key=lambda kv: -kv[1])
-        print("  competitors: " + ", ".join(f"{k} {v}" for k, v in ranked))
+        report("  competitors: " + ", ".join(f"{k} {v}" for k, v in ranked))
     return run_id, sc
