@@ -29,7 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5", "geo", "sales"]
+_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5",
+           "geo", "sales", "studio"]
 
 
 @app.on_event("startup")
@@ -308,6 +309,21 @@ def _outreach_latest() -> dict[str, Any] | None:
 @app.get("/api/outreach/latest")
 async def outreach_latest() -> dict[str, Any] | None:
     return await run_in_threadpool(_outreach_latest)
+
+
+def _studio_recent(n: int = 8) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, theme, title, clip_count, seconds, privacy, status, "
+            "youtube_url, created_at FROM videos ORDER BY id DESC LIMIT %s",
+            (n,),
+        ).fetchall()
+    return [_iso(r) for r in rows]
+
+
+@app.get("/api/studio/recent")
+async def studio_recent() -> list[dict[str, Any]]:
+    return await run_in_threadpool(_studio_recent)
 
 
 @app.post("/api/tasks", status_code=201)

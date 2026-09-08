@@ -159,3 +159,24 @@ export async function getOutreachLatest(): Promise<OutreachLatest | null> {
     return null;
   }
 }
+
+export type StudioVideo = {
+  id: number;
+  theme: string;
+  title: string | null;
+  clip_count: number | null;
+  seconds: number | null;
+  privacy: string;
+  status: "draft" | "rendered" | "uploaded" | "failed";
+  youtube_url: string | null;
+  created_at: string;
+};
+
+export async function getStudioRecent(): Promise<StudioVideo[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/studio/recent`, { cache: "no-store" });
+    return res.ok ? res.json() : [];
+  } catch {
+    return [];
+  }
+}

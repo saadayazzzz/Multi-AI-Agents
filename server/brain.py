@@ -35,6 +35,9 @@ You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
     decision-maker, runs Agent 6 on each prospect's own brand, drafts a
     personalised cold-email sequence built around that visibility finding,
     tracks the pipeline, and exports to leads.xlsx.
+  - Agent 8 (Studio) makes short AI "objects cutting" ASMR videos from a theme
+    (generate clips -> assemble -> thumbnail -> metadata) and, on request,
+    uploads them to YouTube as UNLISTED with an AI-content disclosure.
 
 The user talks to you by voice and may be away while you work. Interpret the
 request, call whatever tools are needed, and chain them for multi-step asks
@@ -129,6 +132,26 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "make_asmr_video",
+        "description": "Run Agent 8 (Studio): make a short AI 'objects cutting' ASMR video "
+        "from a theme — generate clips with a text-to-video model, assemble with ffmpeg, "
+        "build a thumbnail and YouTube metadata. Set upload=true to publish it to YouTube "
+        "(UNLISTED, with an AI-content disclosure; needs one-time OAuth). Use for 'make a "
+        "cutting video', 'create an ASMR video', 'post a satisfying video'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "theme": {"type": "string", "description": "e.g. 'soap cutting', 'glass fruit slicing'"},
+                "clips": {"type": "integer", "description": "number of AI clips (default 3, max 8)"},
+                "seconds": {"type": "integer", "description": "length of each clip (default 8)"},
+                "target": {"type": "integer", "description": "final length in seconds (loops clips to fill)"},
+                "upload": {"type": "boolean"},
+            },
+            "required": ["theme"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "market_pulse",
         "description": "Run Agent 5: pull the latest AI-search / GEO industry developments "
         "via web search into the live feed (answer-engine changes, adoption shifts, GEO "
@@ -165,6 +188,7 @@ _ACTOR_FOR = {
     "market_pulse": "agent5",
     "check_ai_visibility": "geo",
     "run_outreach": "sales",
+    "make_asmr_video": "studio",
 }
 
 
@@ -214,6 +238,26 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
             from agents.agent5_market import pulse
 
             return f"Agent 5: {pulse()} fresh market items added to the feed."
+        if name == "make_asmr_video":
+            from studio.db import init_studio_db
+            from studio.pipeline import make_video
+
+            init_studio_db()
+            r = make_video(
+                args["theme"],
+                clips=int(args.get("clips") or 3),
+                seconds_each=int(args.get("seconds") or 8),
+                target_seconds=args.get("target"),
+                upload=bool(args.get("upload")),
+            )
+            if r.get("url"):
+                return f"Agent 8: '{r['title']}' uploaded (unlisted) — {r['url']}"
+            note = r.get("upload")
+            return (
+                f"Agent 8: rendered '{r['title']}' -> {r['path']}. "
+                + (f"Upload {note}. " if note else "")
+                + "Say 'upload it' once YouTube is authorised."
+            )
         if name == "run_outreach":
             from geo.db import init_geo_db
             from outreach.db import init_outreach_db
