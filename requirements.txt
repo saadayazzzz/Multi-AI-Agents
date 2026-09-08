@@ -9,3 +9,4 @@ uvicorn[standard]>=0.30
 openpyxl>=3.1
 google-api-python-client>=2.100
 google-auth-oauthlib>=1.2
+huggingface_hub>=0.28
