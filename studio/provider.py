@@ -63,14 +63,16 @@ def _hf_clip(prompt: str, seconds: int) -> tuple[bytes, bytes | None]:
             "VIDEO_PROVIDER=hf needs HF_TOKEN in .env "
             "(free from https://huggingface.co/settings/tokens)"
         )
-    model = os.getenv("HF_VIDEO_MODEL", "Lightricks/LTX-Video")
-    client = InferenceClient(token=token, provider="auto")
+    model = os.getenv("HF_VIDEO_MODEL", "Wan-AI/Wan2.2-TI2V-5B")
+    provider = os.getenv("HF_VIDEO_PROVIDER", "auto")
+    client = InferenceClient(token=token, provider=provider)
 
-    mp4 = client.text_to_video(
-        prompt,
-        model=model,
-        num_frames=min(int(seconds) * 24, 161),
-    )
+    try:
+        mp4 = client.text_to_video(prompt, model=model)
+    except (KeyError, TypeError):
+        # some models return a non-standard fal response shape huggingface_hub
+        # can't parse; Wan2.2-5B is known-good
+        mp4 = client.text_to_video(prompt, model="Wan-AI/Wan2.2-TI2V-5B")
     return bytes(mp4), None  # no thumbnail from HF -> pipeline grabs a frame
 
 
