@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTask, setPower } from "@/lib/api";
+import { createTask, getContent, setPower, type ContentPiece } from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
+import { useClapDetector } from "@/lib/useClapDetector";
 import { JarvisCore, type CoreState } from "@/components/JarvisCore";
+import { StarField } from "@/components/StarField";
 import { HudPanel, type Corner } from "@/components/HudPanel";
 import { TetherLines } from "@/components/TetherLines";
 import { MarketFeed } from "@/components/MarketFeed";
@@ -12,6 +14,8 @@ import { CoreCallouts } from "@/components/CoreCallouts";
 import { AgentGrid } from "@/components/AgentGrid";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
+import { ApprovalQueue } from "@/components/ApprovalQueue";
+import { ContentReviewModal } from "@/components/ContentReviewModal";
 import { Analytics } from "@/components/Analytics";
 import { CommandBar } from "@/components/CommandBar";
 
@@ -24,7 +28,7 @@ const CORE_COPY: Record<CoreState, string> = {
 };
 
 export default function Console() {
-  const { connected, stats, agents, tasks, events, market, latestSpoken } = useJarvis();
+  const { connected, stats, agents, tasks, events, trends, latestSpoken } = useJarvis();
   const voice = useVoice();
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -33,6 +37,17 @@ export default function Console() {
   const [localPower, setLocalPower] = useState<"on" | "off" | null>(null);
   const spokenId = useRef(0);
   const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [content, setContent] = useState<ContentPiece[]>([]);
+  const refreshContent = useCallback(() => {
+    getContent().then(setContent).catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshContent();
+    const iv = setInterval(refreshContent, 5000);
+    return () => clearInterval(iv);
+  }, [refreshContent]);
+  const awaitingApproval = useMemo(() => content.filter((c) => c.status === "ready"), [content]);
+  const [reviewing, setReviewing] = useState<ContentPiece | null>(null);
 
   const power = localPower ?? stats?.power ?? "on";
   const off = power === "off";
@@ -101,9 +116,29 @@ export default function Console() {
     pulseTimer.current = setTimeout(() => setPulse(false), 18000);
   }, []);
 
+  useClapDetector(off, () => {
+    setLocalPower("on");
+    reveal();
+    if (!muted) voice.speak("Back online, Sir Saad.");
+    setPower("on").catch(() => {
+      /* snapshot will correct on reconnect */
+    });
+  });
+
   useEffect(() => {
     voice.onResult(async (text) => {
       if (off) return;
+      if (/\bshut\s*down\b/i.test(text)) {
+        reveal();
+        setLocalPower("off");
+        if (!muted) voice.speak("Shutting down, Sir Saad.");
+        try {
+          await setPower("off");
+        } catch {
+          /* snapshot will correct on reconnect */
+        }
+        return;
+      }
       reveal();
       try {
         await createTask(text, "voice");
@@ -137,6 +172,7 @@ export default function Console() {
   return (
     <div className="hud-stage relative h-screen w-screen overflow-hidden">
       {/* backdrop */}
+      <StarField />
       <div className="hud-grid pointer-events-none absolute inset-0" />
       <div className="anim-spin-cw pointer-events-none absolute left-1/2 top-1/2 h-[170vh] w-[170vh] -translate-x-1/2 -translate-y-1/2 rounded-full border border-jarvis/[0.06]" />
       <div className="hud-vignette pointer-events-none absolute inset-0" />
@@ -145,9 +181,9 @@ export default function Console() {
       {/* beams from core -> panels (drawn one at a time) */}
       <TetherLines shown={shown} />
 
-      {/* worldwide market feed — mini headlines on the core's radial lines + bottom ticker */}
-      <CoreCallouts items={off ? [] : market} />
-      <MarketFeed items={off ? [] : market} />
+      {/* trend radar — mini headlines on the core's radial lines + bottom ticker */}
+      <CoreCallouts items={off ? [] : trends} />
+      <MarketFeed items={off ? [] : trends} />
 
       {/* top bar */}
       <header className="pointer-events-auto absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-3">
@@ -216,7 +252,7 @@ export default function Console() {
         <ActivityFeed events={events} />
       </HudPanel>
 
-      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 5}>
+      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 4}>
         <AgentGrid agents={agents} busy={busy} />
       </HudPanel>
 
@@ -225,8 +261,15 @@ export default function Console() {
       </HudPanel>
 
       <HudPanel corner="bl" open={isOpen("bl")} title="Tasks" count={tasks.length}>
+        <ApprovalQueue items={awaitingApproval} onApproved={refreshContent} onOpen={setReviewing} />
         <TaskQueue tasks={tasks} />
       </HudPanel>
+
+      <ContentReviewModal
+        content={reviewing}
+        onClose={() => setReviewing(null)}
+        onApproved={refreshContent}
+      />
 
       {/* center — core + command */}
       <div
@@ -242,10 +285,10 @@ export default function Console() {
           <JarvisCore
             state={coreState}
             readouts={[
-              { label: "Sites", value: stats?.sites_total ?? "–" },
-              { label: "Products", value: stats?.products ?? "–" },
+              { label: "Trends", value: stats?.trends_total ?? "–" },
+              { label: "Content", value: stats?.content_total ?? "–" },
               { label: "Tasks", value: tasks.length },
-              { label: "Feed", value: market.length },
+              { label: "Feed", value: trends.length },
             ]}
           />
           <div className="flex h-5 items-center gap-2">

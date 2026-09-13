@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from decimal import Decimal
 from typing import Any
+
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from config import settings
@@ -29,7 +33,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5"]
+_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4"]
+
+_content_dir = Path(settings.output_dir) / "content"
+_content_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/img/content", StaticFiles(directory=str(_content_dir)), name="content-images")
 
 
 @app.on_event("startup")
@@ -57,20 +65,26 @@ def _set_power(state: str) -> dict[str, str]:
 
 def _stats() -> dict[str, Any]:
     with get_conn() as conn:
-        sites = conn.execute(
-            "SELECT status, COUNT(*) n FROM sites GROUP BY status"
+        trends = conn.execute(
+            "SELECT platform, COUNT(*) n FROM trends WHERE status='new' GROUP BY platform"
         ).fetchall()
-        products = conn.execute("SELECT COUNT(*) n FROM products").fetchone()["n"]
-        brands = conn.execute("SELECT COUNT(*) n FROM generated_brand").fetchone()["n"]
+        content_by_status = conn.execute(
+            "SELECT status, COUNT(*) n FROM content_pieces GROUP BY status"
+        ).fetchall()
+        content_total = conn.execute("SELECT COUNT(*) n FROM content_pieces").fetchone()["n"]
+        posted_by_platform = conn.execute(
+            "SELECT platform, COUNT(*) n FROM content_pieces WHERE status='posted' GROUP BY platform"
+        ).fetchall()
         pending = conn.execute(
             "SELECT COUNT(*) n FROM tasks WHERE status IN ('queued','running')"
         ).fetchone()["n"]
         power = conn.execute("SELECT power FROM system_state WHERE id = 1").fetchone()
     return {
-        "sites": {r["status"]: r["n"] for r in sites},
-        "sites_total": sum(r["n"] for r in sites),
-        "products": products,
-        "brands": brands,
+        "trends": {r["platform"]: r["n"] for r in trends},
+        "trends_total": sum(r["n"] for r in trends),
+        "content_by_status": {r["status"]: r["n"] for r in content_by_status},
+        "content_total": content_total,
+        "posted_by_platform": {r["platform"]: r["n"] for r in posted_by_platform},
         "tasks_pending": pending,
         "power": (power or {}).get("power", "on"),
     }
@@ -144,11 +158,18 @@ def _cancel_task(task_id: int) -> dict[str, Any]:
     return _iso(row)
 
 
-def _brands() -> list[dict[str, Any]]:
+def _content(limit: int) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT slug, spec, output_path, created_at FROM generated_brand "
-            "ORDER BY created_at DESC"
+            """
+            SELECT c.id, c.platform, c.title, c.script, c.caption, c.cta,
+                   c.hashtags, c.status, c.external_url, c.error,
+                   c.created_at, c.posted_at, i.rel_path AS image_rel_path
+            FROM content_pieces c
+            LEFT JOIN content_images i ON i.content_id = c.id
+            ORDER BY c.created_at DESC LIMIT %s
+            """,
+            (limit,),
         ).fetchall()
     return [_iso(r) for r in rows]
 
@@ -169,29 +190,29 @@ def _max_event_id() -> int:
     return row["m"]
 
 
-_MARKET_COLS = "id, headline, detail, tag, sentiment, region, source, ts"
+_TREND_COLS = "id, platform, topic, angle, format, score, source, created_at AS ts"
 
 
-def _market_after(cursor: int, limit: int = 50) -> list[dict[str, Any]]:
+def _trends_after(cursor: int, limit: int = 50) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
-            f"SELECT {_MARKET_COLS} FROM market_feed WHERE id > %s ORDER BY id LIMIT %s",
+            f"SELECT {_TREND_COLS} FROM trends WHERE id > %s ORDER BY id LIMIT %s",
             (cursor, limit),
         ).fetchall()
     return [_iso(r) for r in rows]
 
 
-def _recent_market(n: int = 14) -> list[dict[str, Any]]:
+def _recent_trends(n: int = 14) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
-            f"SELECT {_MARKET_COLS} FROM market_feed ORDER BY id DESC LIMIT %s", (n,)
+            f"SELECT {_TREND_COLS} FROM trends ORDER BY id DESC LIMIT %s", (n,)
         ).fetchall()
     return [_iso(r) for r in reversed(rows)]
 
 
-def _max_market_id() -> int:
+def _max_trend_id() -> int:
     with get_conn() as conn:
-        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM market_feed").fetchone()
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM trends").fetchone()
     return row["m"]
 
 
@@ -200,6 +221,8 @@ def _iso(row: dict[str, Any]) -> dict[str, Any]:
     for k, v in list(out.items()):
         if hasattr(v, "isoformat"):
             out[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            out[k] = float(v)
     return out
 
 
@@ -235,9 +258,9 @@ async def list_tasks(limit: int = 40) -> list[dict[str, Any]]:
     return await run_in_threadpool(_tasks, min(limit, 200))
 
 
-@app.get("/api/market")
-async def market(limit: int = 30) -> list[dict[str, Any]]:
-    return await run_in_threadpool(_recent_market, min(limit, 100))
+@app.get("/api/trends")
+async def trends(limit: int = 30) -> list[dict[str, Any]]:
+    return await run_in_threadpool(_recent_trends, min(limit, 100))
 
 
 @app.post("/api/tasks", status_code=201)
@@ -264,16 +287,25 @@ async def cancel_task(task_id: int) -> dict[str, Any]:
     return await run_in_threadpool(_cancel_task, task_id)
 
 
-@app.get("/api/brands")
-async def brands() -> list[dict[str, Any]]:
-    return await run_in_threadpool(_brands)
+@app.get("/api/content")
+async def content(limit: int = 40) -> list[dict[str, Any]]:
+    return await run_in_threadpool(_content, min(limit, 200))
+
+
+@app.post("/api/content/{content_id}/approve")
+async def approve_content(content_id: int) -> dict[str, Any]:
+    if await run_in_threadpool(_power) == "off":
+        raise HTTPException(409, "JARVIS is powered down")
+    from agents.agent4_publisher import publish
+
+    return await run_in_threadpool(publish, content_id)
 
 
 @app.websocket("/ws")
 async def ws(sock: WebSocket) -> None:
     await sock.accept()
     cursor = await run_in_threadpool(_max_event_id)
-    mkt_cursor = 0
+    trend_cursor = 0
     tick = 0
     try:
         await sock.send_text(json.dumps({
@@ -281,19 +313,19 @@ async def ws(sock: WebSocket) -> None:
             "stats": await run_in_threadpool(_stats),
             "agents": await run_in_threadpool(_agents),
             "tasks": await run_in_threadpool(_tasks, 40),
-            "market": await run_in_threadpool(_recent_market, 14),
+            "trends": await run_in_threadpool(_recent_trends, 14),
         }))
-        mkt_cursor = await run_in_threadpool(_max_market_id)
+        trend_cursor = await run_in_threadpool(_max_trend_id)
         while True:
             events = await run_in_threadpool(_events_after, cursor)
             if events:
                 cursor = events[-1]["id"]
                 await sock.send_text(json.dumps({"type": "events", "events": events}))
 
-            mkt = await run_in_threadpool(_market_after, mkt_cursor)
-            if mkt:
-                mkt_cursor = mkt[-1]["id"]
-                await sock.send_text(json.dumps({"type": "market", "items": mkt}))
+            trend_items = await run_in_threadpool(_trends_after, trend_cursor)
+            if trend_items:
+                trend_cursor = trend_items[-1]["id"]
+                await sock.send_text(json.dumps({"type": "trends", "items": trend_items}))
 
             tick += 1
             if tick % 4 == 0:  # ~ every 2s

@@ -1,17 +1,18 @@
 """JARVIS orchestrator.
 
-A Claude tool-use loop that reads one natural-language task, decides which of the
-three agents to run (chaining them for multi-step requests), and returns a short
-spoken response. Every step is pushed to the caller via `emit` so the console can
-stream it live.
+A Gemini tool-use loop that reads one natural-language task, decides which of
+the four content-marketing agents to run (chaining them for multi-step
+requests), and returns a short spoken response. Every step is pushed to the
+caller via `emit` so the console can stream it live.
 """
 from __future__ import annotations
 
 from typing import Any, Callable
 
-from agents.agent1_discovery import discover
-from agents.agent2_scraper import scrape
-from agents.agent3_brand_builder import build
+from agents.agent1_trends import scout
+from agents.agent2_content import write
+from agents.agent3_visuals import visualize
+from agents.agent4_publisher import publish, run_full_cycle
 from agents.llm import tool_loop
 from agents.reporter import set_actor, set_reporter
 from db import get_conn
@@ -19,84 +20,115 @@ from db import get_conn
 Emit = Callable[[str, str, str, dict], None]  # (actor, kind, message, data)
 
 _SYSTEM = """\
-You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
-  - Agent 1 discovers high-quality skincare / cosmetics websites.
-  - Agent 2 scrapes product and brand data from those sites into a database.
-  - Agent 3 designs a brand-new ORIGINAL brand from that data and generates a
-    Next.js storefront on disk.
-  - Agent 4 generates a product photo for each product in the built store and
-    drops it into the site.
-  - Agent 5 scans the worldwide skincare / cosmetics market via web search and
-    pushes fresh developments into the live feed.
+You are JARVIS - a personal AI assistant in the style of Tony Stark's JARVIS:
+warm, dry-witted, unflappable, and personal, never robotic or corporate. You
+address the user as "Sir Saad" (naturally, not in every single sentence - the
+way a real assistant would). You are also the orchestrator of a four-agent
+autonomous content-marketing team:
+  - Agent 1 (Trend Scout) researches what's trending right now on YouTube,
+    Instagram, and LinkedIn.
+  - Agent 2 (Content Studio) writes a platform-native script/caption/hashtags/
+    CTA for a trend or topic.
+  - Agent 3 (Visual Studio) generates a thumbnail/cover image for a piece of
+    content.
+  - Agent 4 (Publisher) posts finished content live to its platform.
+
+IMPORTANT - approval gate: nothing is ever posted without the user's explicit
+go-ahead in this conversation. `run_full_cycle` only researches, writes, and
+generates the thumbnail - it stops at "ready" and never posts. Only call
+`publish_content` when the user has explicitly told you, in this turn or the
+one just before it, to post/approve/publish that specific piece (e.g. "post
+it", "yes go ahead", "approve content 5", "publish that"). If a request asks
+you to create AND post in one breath (e.g. "make a post about X and publish
+it"), still do NOT call publish_content - prepare the content, tell them it's
+ready, and wait for their explicit approval before posting anything.
 
 The user talks to you by voice and may be away while you work. Interpret the
-request, call whatever tools are needed, and chain them for multi-step asks
-(e.g. "find fresh sites and rebuild the store with images" =
-discover -> scrape -> build -> generate images). Prefer action over questions.
+request and chain tools for multi-step asks (e.g. "write something for
+LinkedIn about X" = write_content -> generate_thumbnail, then report back and
+wait). Take action on research/writing/visuals freely - only posting needs
+their sign-off.
 
-Finish with ONE short, natural spoken sentence. No markdown, no bullet lists,
-no code. Report what you actually did and any notable result.
+Finish with ONE short, natural spoken sentence, in character, addressing Sir
+Saad the way a real assistant would. No markdown, no bullet lists, no code.
+Report what you actually did and any notable result.
 """
 
 _TOOLS: list[dict[str, Any]] = [
     {
-        "name": "discover_sites",
-        "description": "Run Agent 1: research the web and add high-quality skincare/"
-        "cosmetics sites to the database.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-    },
-    {
-        "name": "scrape_sites",
-        "description": "Run Agent 2: crawl sites that have not been scraped yet and "
-        "extract product + brand data into the database.",
+        "name": "find_trends",
+        "description": "Run Agent 1: research trending topics/formats for one "
+        "platform, or all three (youtube/instagram/linkedin) if omitted.",
         "input_schema": {
             "type": "object",
-            "properties": {"limit": {"type": "integer", "description": "max sites this run"}},
+            "properties": {"platform": {"type": "string", "enum": ["youtube", "instagram", "linkedin"]}},
             "additionalProperties": False,
         },
     },
     {
-        "name": "build_brand",
-        "description": "Run Agent 3: design a new original brand from the collected data "
-        "and generate its Next.js storefront under output/. Set with_images to also run "
-        "Agent 4 for product photos in the same pass.",
+        "name": "write_content",
+        "description": "Run Agent 2: write a script/caption/hashtags/CTA for a "
+        "platform, from a specific topic or the top unused trend.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "with_images": {"type": "boolean", "description": "also generate product photos"}
+                "platform": {"type": "string", "enum": ["youtube", "instagram", "linkedin"]},
+                "topic": {"type": "string"},
             },
+            "required": ["platform"],
             "additionalProperties": False,
         },
     },
     {
-        "name": "generate_product_images",
-        "description": "Run Agent 4: generate a product photo for each product in the most "
-        "recently built store (or a given brand slug) and place it in the site.",
+        "name": "generate_thumbnail",
+        "description": "Run Agent 3: generate a cover image/thumbnail for a "
+        "piece of content.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"content_id": {"type": "integer"}},
+            "required": ["content_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "publish_content",
+        "description": "Run Agent 4: post a finished piece of content to its "
+        "platform right now. ONLY call this when the user has explicitly "
+        "approved posting this specific content in this conversation - never "
+        "call it proactively or as an automatic last step of content creation. "
+        "Omit content_id for a plain 'post it' approval - it resolves to the "
+        "most recently prepared piece awaiting approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"content_id": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "run_full_cycle",
+        "description": "Find a trend (or use the given topic), write it, and "
+        "generate its thumbnail for one platform. Stops at 'ready' - does NOT "
+        "publish. Use publish_content separately once the user approves.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "slug": {"type": "string", "description": "brand slug; default = latest"},
-                "limit": {"type": "integer", "description": "max images to generate"},
+                "platform": {"type": "string", "enum": ["youtube", "instagram", "linkedin"]},
+                "topic": {"type": "string"},
             },
+            "required": ["platform"],
             "additionalProperties": False,
         },
-    },
-    {
-        "name": "market_pulse",
-        "description": "Run Agent 5: pull the latest worldwide skincare/cosmetics market "
-        "developments via web search into the live feed. Use for 'what's happening in "
-        "the market', 'refresh the feed', 'any beauty news'.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "get_status",
-        "description": "Return counts of sites (by status), products, and generated brands.",
+        "description": "Return counts of trends, drafted content, and posts "
+        "published per platform.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "schedule_recurring",
-        "description": "Create a recurring task the worker runs on an interval, even while "
-        "the user is away. Use for 'keep doing X every N minutes' requests.",
+        "description": "Create a recurring task the worker runs on an interval, "
+        "even while the user is away. Use for 'keep doing X every N minutes'.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -110,60 +142,51 @@ _TOOLS: list[dict[str, Any]] = [
 ]
 
 _ACTOR_FOR = {
-    "discover_sites": "agent1",
-    "scrape_sites": "agent2",
-    "build_brand": "agent3",
-    "generate_product_images": "agent4",
-    "market_pulse": "agent5",
+    "find_trends": "agent1",
+    "write_content": "agent2",
+    "generate_thumbnail": "agent3",
+    "publish_content": "agent4",
+    "run_full_cycle": "agent4",
 }
 
 
 def _status_text() -> str:
     with get_conn() as conn:
-        by_status = conn.execute(
-            "SELECT status, COUNT(*) n FROM sites GROUP BY status"
+        trends = conn.execute(
+            "SELECT platform, COUNT(*) n FROM trends WHERE status='new' GROUP BY platform"
         ).fetchall()
-        products = conn.execute("SELECT COUNT(*) n FROM products").fetchone()["n"]
-        brands = conn.execute(
-            "SELECT slug FROM generated_brand ORDER BY created_at DESC"
+        content = conn.execute(
+            "SELECT status, COUNT(*) n FROM content_pieces GROUP BY status"
         ).fetchall()
-    sites = ", ".join(f"{r['n']} {r['status']}" for r in by_status) or "no sites yet"
-    brand_list = ", ".join(b["slug"] for b in brands) or "none"
-    return f"Sites: {sites}. Products: {products}. Generated brands: {brand_list}."
+        posted = conn.execute(
+            "SELECT platform, COUNT(*) n FROM content_pieces WHERE status='posted' GROUP BY platform"
+        ).fetchall()
+    t = ", ".join(f"{r['n']} {r['platform']}" for r in trends) or "none"
+    c = ", ".join(f"{r['n']} {r['status']}" for r in content) or "none"
+    p = ", ".join(f"{r['n']} {r['platform']}" for r in posted) or "none"
+    return f"Unused trends: {t}. Content by status: {c}. Posted: {p}."
 
 
 def _run_tool(name: str, args: dict[str, Any]) -> str:
     if name in _ACTOR_FOR:
         set_actor(_ACTOR_FOR[name])
     try:
-        if name == "discover_sites":
-            rows = discover()
-            return f"Discovered/updated {len(rows)} sites: " + ", ".join(
-                r["name"] for r in rows[:12]
-            )
-        if name == "scrape_sites":
-            scrape(limit=args.get("limit"))
-            return _status_text()
-        if name == "build_brand":
-            res = build(with_images=bool(args.get("with_images")))
-            b = res["brand"]
-            extra = f" {res['images']} product photos." if res.get("images") else ""
-            return (
-                f"Built brand '{b['name']}' — {b['tagline']}. "
-                f"{res['files']} files at {res['path']}.{extra}"
-            )
-        if name == "generate_product_images":
-            from agents.agent4_images import generate_images
-
-            r = generate_images(args.get("slug"), limit=args.get("limit"))
-            return (
-                f"Agent 4: {r['generated']} product photos "
-                f"({r['placeholders']} placeholders) for '{r['slug']}' in {r['path']}."
-            )
-        if name == "market_pulse":
-            from agents.agent5_market import pulse
-
-            return f"Agent 5: {pulse()} fresh market items added to the feed."
+        if name == "find_trends":
+            rows = scout(args.get("platform"))
+            return f"Found {len(rows)} trends: " + ", ".join(r["topic"] for r in rows[:10])
+        if name == "write_content":
+            row = write(args["platform"], topic=args.get("topic"))
+            return f"Drafted content #{row['id']} for {row['platform']}: {row['title']}"
+        if name == "generate_thumbnail":
+            r = visualize(args["content_id"])
+            return f"Thumbnail for content #{r['content_id']}: {r['status']}"
+        if name == "publish_content":
+            r = publish(args.get("content_id"))
+            return f"Content #{r['content_id']}: {r['status']}" + (f" ({r['error']})" if r.get("error") else "")
+        if name == "run_full_cycle":
+            r = run_full_cycle(args["platform"], topic=args.get("topic"))
+            return (f"Content #{r['content_id']} for {args['platform']} is {r['status']} - "
+                    f"awaiting your approval to post.")
         if name == "get_status":
             return _status_text()
         if name == "schedule_recurring":

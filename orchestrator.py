@@ -1,10 +1,11 @@
 """Pipeline entry point.
 
     python orchestrator.py initdb          # create tables
-    python orchestrator.py discover        # agent 1
-    python orchestrator.py scrape          # agent 2
-    python orchestrator.py build           # agent 3
-    python orchestrator.py all             # 1 -> 2 -> 3
+    python orchestrator.py trends          # agent 1: trend scout
+    python orchestrator.py content         # agent 2: content studio
+    python orchestrator.py visuals         # agent 3: visual studio
+    python orchestrator.py publish         # agent 4: publisher
+    python orchestrator.py all             # 1 -> 2 -> 3 -> 4
 
     python orchestrator.py serve           # FastAPI control plane (for the console)
     python orchestrator.py worker          # autonomous task worker
@@ -14,7 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-# Windows consoles default to cp1252; agent output (— • ’   …) must not crash logging.
+# Windows consoles default to cp1252; agent output (— • ’   …) must not crash logging.
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")
@@ -26,13 +27,14 @@ from db.database import wait_for_db
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Multi-agent skincare/cosmetics pipeline")
+    parser = argparse.ArgumentParser(description="Autonomous viral-content marketing pipeline")
     parser.add_argument(
         "stage",
-        choices=["initdb", "discover", "scrape", "build", "all", "serve", "worker"],
+        choices=["initdb", "trends", "content", "visuals", "publish", "all", "serve", "worker"],
         help="which stage to run",
     )
-    parser.add_argument("--limit", type=int, default=None, help="max sites for scrape")
+    parser.add_argument("--platform", default=None, help="youtube | instagram | linkedin")
+    parser.add_argument("--content-id", type=int, default=None, help="content piece id (visuals/publish)")
     args = parser.parse_args()
 
     if args.stage == "serve":
@@ -53,28 +55,45 @@ def main() -> int:
 
     wait_for_db()
 
-    if args.stage in ("initdb", "all", "discover", "scrape", "build"):
+    if args.stage in ("initdb", "all", "trends", "content", "visuals", "publish"):
         init_db()
     if args.stage == "initdb":
         return 0
 
-    if args.stage in ("discover", "all"):
-        from agents.agent1_discovery import discover
+    if args.stage in ("trends", "all"):
+        from agents.agent1_trends import scout
 
-        print("\n=== Agent 1: discovery ===")
-        discover()
+        print("\n=== Agent 1: trend scout ===")
+        scout(args.platform)
 
-    if args.stage in ("scrape", "all"):
-        from agents.agent2_scraper import scrape
+    if args.stage in ("content", "all"):
+        from agents.agent2_content import write
 
-        print("\n=== Agent 2: scrape & store ===")
-        scrape(limit=args.limit)
+        print("\n=== Agent 2: content studio ===")
+        write(args.platform or "linkedin")
 
-    if args.stage in ("build", "all"):
-        from agents.agent3_brand_builder import build
+    if args.stage in ("visuals", "all"):
+        from agents.agent3_visuals import visualize
 
-        print("\n=== Agent 3: brand + site ===")
-        build()
+        print("\n=== Agent 3: visual studio ===")
+        visualize(args.content_id)
+
+    if args.stage in ("publish", "all"):
+        from agents.agent4_publisher import publish
+        from db import get_conn
+
+        print("\n=== Agent 4: publisher ===")
+        content_id = args.content_id
+        if content_id is None:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT id FROM content_pieces WHERE status='ready' ORDER BY created_at DESC LIMIT 1"
+                ).fetchone()
+            content_id = row["id"] if row else None
+        if content_id is None:
+            print("no ready content to publish")
+        else:
+            publish(content_id)
 
     return 0
 

@@ -103,7 +103,7 @@ export function JarvisCore({
           <circle cx={C} cy={C} r="146" fill="none" stroke={p} strokeOpacity="0.32" strokeWidth="1" strokeDasharray="1.5 8" />
         </g>
 
-        {/* ---- radial callout lines (where market feeds anchor) ---- */}
+        {/* ---- radial callout lines (where trend feeds anchor) ---- */}
         <g stroke={p} strokeOpacity="0.4">
           {spokes.map((deg, i) => {
             const [x1, y1] = pt(deg, 104);

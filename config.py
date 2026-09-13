@@ -28,14 +28,35 @@ class Settings:
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
     openai_image_model: str = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+
+    # Google Gemini API (free tier - aistudio.google.com/apikey, no card needed).
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    gemini_image_model: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
     max_images: int = int(os.getenv("MAX_IMAGES", "24"))
 
-    # Agent 5 — worldwide market pulse. 0 disables the automatic feed.
-    market_pulse_minutes: int = int(os.getenv("MARKET_PULSE_MINUTES", "25"))
+    # Agent 4 — autonomous publish cycle. 0 disables the automatic feed.
+    auto_content_minutes: int = int(os.getenv("AUTO_CONTENT_MINUTES", "60"))
+
+    # Social platform credentials (all optional; posting for a platform is skipped
+    # with a clear error until its credentials are filled in).
+    linkedin_access_token: str = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
+    linkedin_author_urn: str = os.getenv("LINKEDIN_AUTHOR_URN", "")
+
+    instagram_access_token: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+    instagram_user_id: str = os.getenv("INSTAGRAM_USER_ID", "")
+
+    youtube_client_secret_json: str = os.getenv("YOUTUBE_CLIENT_SECRET_JSON", "")
+    youtube_refresh_token: str = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
+
+    # Publicly reachable base URL for this server (needed by Instagram, which must
+    # fetch generated images over the internet, e.g. via ngrok/Cloudflare Tunnel).
+    public_base_url: str = os.getenv("PUBLIC_BASE_URL", "")
 
     database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql://maai:maai@localhost:5432/maai"
+        "DATABASE_URL", "postgresql://maai:maai@127.0.0.1:5432/maai"
     )
 
     user_agent: str = os.getenv(

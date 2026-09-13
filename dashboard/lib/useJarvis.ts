@@ -4,14 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   WS_URL,
   type AgentState,
-  type MarketItem,
+  type TrendItem,
   type Stats,
   type Task,
   type TaskEvent,
 } from "./api";
 
 const MAX_EVENTS = 400;
-const MAX_MARKET = 60;
+const MAX_TRENDS = 60;
 
 export type JarvisFeed = {
   connected: boolean;
@@ -19,7 +19,7 @@ export type JarvisFeed = {
   agents: AgentState[];
   tasks: Task[];
   events: TaskEvent[];
-  market: MarketItem[];
+  trends: TrendItem[];
   /** newest orchestrator/system line meant to be spoken, or null */
   latestSpoken: { id: number; text: string } | null;
 };
@@ -30,13 +30,13 @@ export function useJarvis(): JarvisFeed {
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<TaskEvent[]>([]);
-  const [market, setMarket] = useState<MarketItem[]>([]);
+  const [trends, setTrends] = useState<TrendItem[]>([]);
   const [latestSpoken, setLatestSpoken] = useState<{ id: number; text: string } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
   const deadRef = useRef(false); // set on unmount so a pending reconnect is cancelled
   const seenRef = useRef<Set<number>>(new Set());
-  const mktSeenRef = useRef<Set<number>>(new Set());
+  const trendSeenRef = useRef<Set<number>>(new Set());
 
   const connect = useCallback(() => {
     if (deadRef.current) return;
@@ -61,20 +61,20 @@ export function useJarvis(): JarvisFeed {
         if (msg.stats) setStats(msg.stats);
         if (msg.agents) setAgents(msg.agents);
         if (msg.tasks) setTasks(msg.tasks);
-        if (msg.market) {
-          const m: MarketItem[] = msg.market;
-          m.forEach((x) => mktSeenRef.current.add(x.id));
-          setMarket(m.slice(-MAX_MARKET));
+        if (msg.trends) {
+          const m: TrendItem[] = msg.trends;
+          m.forEach((x) => trendSeenRef.current.add(x.id));
+          setTrends(m.slice(-MAX_TRENDS));
         }
         return;
       }
-      if (msg.type === "market") {
-        const fresh: MarketItem[] = (msg.items as MarketItem[]).filter(
-          (x) => !mktSeenRef.current.has(x.id),
+      if (msg.type === "trends") {
+        const fresh: TrendItem[] = (msg.items as TrendItem[]).filter(
+          (x) => !trendSeenRef.current.has(x.id),
         );
         if (!fresh.length) return;
-        fresh.forEach((x) => mktSeenRef.current.add(x.id));
-        setMarket((prev) => [...prev, ...fresh].slice(-MAX_MARKET));
+        fresh.forEach((x) => trendSeenRef.current.add(x.id));
+        setTrends((prev) => [...prev, ...fresh].slice(-MAX_TRENDS));
         return;
       }
       if (msg.type !== "events") return;
@@ -92,11 +92,10 @@ export function useJarvis(): JarvisFeed {
       });
 
       for (const e of fresh) {
-        if (
-          (e.kind === "message" || e.kind === "spoken") &&
-          (e.actor === "orchestrator" || e.actor === "system") &&
-          e.message
-        ) {
+        // Only the final "spoken" event (emitted once per task, on completion)
+        // should be read aloud - "message" events fire on every tool-loop step
+        // and would otherwise cause the same reply to be spoken 2-3x.
+        if (e.kind === "spoken" && e.actor === "system" && e.message) {
           setLatestSpoken({ id: e.id, text: e.message });
         }
       }
@@ -112,5 +111,5 @@ export function useJarvis(): JarvisFeed {
     };
   }, [connect]);
 
-  return { connected, stats, agents, tasks, events, market, latestSpoken };
+  return { connected, stats, agents, tasks, events, trends, latestSpoken };
 }

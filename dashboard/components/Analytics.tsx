@@ -23,15 +23,16 @@ export function Analytics({ stats, tasks }: { stats: Stats | null; tasks: Task[]
   const active = (tally.running ?? 0) + (tally.queued ?? 0);
   const total = done + failed + active || 1;
 
-  const sites = stats?.sites ?? {};
-  const maxSite = Math.max(1, ...Object.values(sites));
+  const contentByStatus = stats?.content_by_status ?? {};
+  const maxStatus = Math.max(1, ...Object.values(contentByStatus));
+  const posted = Object.values(stats?.posted_by_platform ?? {}).reduce((a, b) => a + b, 0);
 
   return (
     <div className="space-y-3 p-3">
       <div className="grid grid-cols-2 gap-2">
-        <Tile label="Sites" value={dash(stats?.sites_total)} />
-        <Tile label="Products" value={dash(stats?.products)} />
-        <Tile label="Brands" value={dash(stats?.brands)} />
+        <Tile label="Trends" value={dash(stats?.trends_total)} />
+        <Tile label="Content Drafted" value={dash(stats?.content_total)} />
+        <Tile label="Posts Published" value={dash(posted)} />
         <Tile label="Tasks" value={tasks.length} />
       </div>
 
@@ -50,18 +51,18 @@ export function Analytics({ stats, tasks }: { stats: Stats | null; tasks: Task[]
       </div>
 
       <div className="border border-jarvis/15 bg-black/25 px-2.5 py-2">
-        <div className="label">Sites by status</div>
+        <div className="label">Content by status</div>
         <div className="mt-2 space-y-1.5">
-          {Object.entries(sites).length === 0 && (
-            <div className="font-mono text-[9px] text-jarvis/35">no sites yet</div>
+          {Object.entries(contentByStatus).length === 0 && (
+            <div className="font-mono text-[9px] text-jarvis/35">no content yet</div>
           )}
-          {Object.entries(sites).map(([k, v]) => (
+          {Object.entries(contentByStatus).map(([k, v]) => (
             <div key={k} className="flex items-center gap-2 font-mono text-[9px] text-jarvis/55">
-              <span className="w-16 shrink-0 uppercase tracking-wider">{k}</span>
+              <span className="w-24 shrink-0 uppercase tracking-wider">{k}</span>
               <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-jarvis/10">
                 <span
                   className="block h-full bg-jarvis/60"
-                  style={{ width: `${(v / maxSite) * 100}%` }}
+                  style={{ width: `${(v / maxStatus) * 100}%` }}
                 />
               </span>
               <span className="w-5 text-right">{v}</span>

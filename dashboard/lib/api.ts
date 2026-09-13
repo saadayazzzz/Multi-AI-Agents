@@ -12,10 +12,11 @@ export type AgentState = {
 };
 
 export type Stats = {
-  sites: Record<string, number>;
-  sites_total: number;
-  products: number;
-  brands: number;
+  trends: Record<string, number>;
+  trends_total: number;
+  content_by_status: Record<string, number>;
+  content_total: number;
+  posted_by_platform: Record<string, number>;
   tasks_pending: number;
   power?: "on" | "off";
 };
@@ -44,21 +45,30 @@ export type TaskEvent = {
   ts: string;
 };
 
-export type Brand = {
-  slug: string;
-  spec: Record<string, any>;
-  output_path: string | null;
+export type ContentPiece = {
+  id: number;
+  platform: string;
+  title: string | null;
+  script: string | null;
+  caption: string | null;
+  cta: string | null;
+  hashtags: string[] | null;
+  status: "draft" | "ready" | "ready_manual_upload" | "posted" | "failed";
+  external_url: string | null;
+  error: string | null;
   created_at: string;
+  posted_at: string | null;
+  image_rel_path: string | null;
 };
 
-export type MarketItem = {
+export type TrendItem = {
   id: number;
   ts: string;
-  headline: string;
-  detail: string | null;
-  tag: string | null;
-  sentiment: "positive" | "neutral" | "negative" | null;
-  region: string | null;
+  platform: string;
+  topic: string;
+  angle: string | null;
+  format: string | null;
+  score: number | null;
   source: string | null;
 };
 
@@ -84,7 +94,13 @@ export async function setPower(state: "on" | "off"): Promise<void> {
   });
 }
 
-export async function getBrands(): Promise<Brand[]> {
-  const res = await fetch(`${API_BASE}/api/brands`, { cache: "no-store" });
+export async function getContent(): Promise<ContentPiece[]> {
+  const res = await fetch(`${API_BASE}/api/content`, { cache: "no-store" });
   return res.ok ? res.json() : [];
+}
+
+export async function approveContent(id: number): Promise<ContentPiece> {
+  const res = await fetch(`${API_BASE}/api/content/${id}/approve`, { method: "POST" });
+  if (!res.ok) throw new Error(`approveContent failed: ${res.status}`);
+  return res.json();
 }

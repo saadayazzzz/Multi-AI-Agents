@@ -96,7 +96,7 @@ def run() -> None:
 
         task = _claim_task()
         if task is None:
-            _maybe_market_pulse()
+            _maybe_auto_content()
             time.sleep(settings.worker_poll_seconds)
             continue
 
@@ -131,27 +131,34 @@ def _power_off() -> bool:
 
 
 _started = time.monotonic()
-_last_pulse = 0.0
+_last_auto = 0.0
+_auto_platform_idx = 0
+_PLATFORMS = ["youtube", "instagram", "linkedin"]
 
 
-def _maybe_market_pulse() -> None:
-    """Auto-run Agent 5 on an interval while the queue is idle."""
-    global _last_pulse
-    if settings.market_pulse_minutes <= 0:
+def _maybe_auto_content() -> None:
+    """Auto-run the full scout->write->visualize->publish cycle on an interval
+    while the queue is idle, round-robining across platforms - this is what
+    makes the content-marketing pipeline fully autonomous with no prompting."""
+    global _last_auto, _auto_platform_idx
+    if settings.auto_content_minutes <= 0:
         return
     now = time.monotonic()
-    if _last_pulse == 0.0:
-        if now - _started < 25:  # let the stack settle before the first scan
+    if _last_auto == 0.0:
+        if now - _started < 25:  # let the stack settle before the first cycle
             return
-    elif now - _last_pulse < settings.market_pulse_minutes * 60:
+    elif now - _last_auto < settings.auto_content_minutes * 60:
         return
-    _last_pulse = now
+    _last_auto = now
+    platform = _PLATFORMS[_auto_platform_idx % len(_PLATFORMS)]
+    _auto_platform_idx += 1
     try:
-        from agents.agent5_market import pulse
+        from agents.agent4_publisher import run_full_cycle
 
-        print(f"worker: market pulse -> {pulse()} new items")
-    except Exception as e:  # noqa: BLE001
-        print(f"worker: market pulse failed: {e}")
+        r = run_full_cycle(platform)
+        print(f"worker: auto-content [{platform}] -> {r}")
+    except Exception as e:  # noqa: BLE001 - never let a hiccup wedge the loop
+        print(f"worker: auto-content [{platform}] failed: {e}")
 
 
 if __name__ == "__main__":

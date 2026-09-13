@@ -36,6 +36,20 @@ body {
   background: radial-gradient(120% 120% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.72));
 }
 
+/* ---------- deep-space backdrop ---------- */
+.nebula-glow {
+  background:
+    radial-gradient(38% 30% at 18% 22%, rgba(90, 70, 200, 0.16), transparent 70%),
+    radial-gradient(45% 35% at 85% 18%, rgba(56, 224, 208, 0.1), transparent 70%),
+    radial-gradient(50% 40% at 30% 85%, rgba(180, 60, 160, 0.1), transparent 70%),
+    radial-gradient(40% 35% at 78% 80%, rgba(60, 90, 220, 0.12), transparent 70%);
+  animation: nebula-drift 60s ease-in-out infinite alternate;
+}
+@keyframes nebula-drift {
+  0% { filter: hue-rotate(0deg) brightness(1); transform: scale(1); }
+  100% { filter: hue-rotate(18deg) brightness(1.08); transform: scale(1.04); }
+}
+
 /* ---------- scrollbars ---------- */
 *::-webkit-scrollbar {
   width: 6px;

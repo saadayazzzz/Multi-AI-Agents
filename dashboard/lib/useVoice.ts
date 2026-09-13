@@ -84,18 +84,56 @@ export function useVoice(): VoiceApi {
 
   const speak = useCallback((text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis || !text) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.02;
-    u.pitch = 0.9;
-    const pick = window.speechSynthesis
-      .getVoices()
-      .find((v) => /Google UK English Male|Daniel|Microsoft (Guy|Ryan)/i.test(v.name));
-    if (pick) u.voice = pick;
-    u.onstart = () => setSpeaking(true);
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(u);
+    const synth = window.speechSynthesis;
+
+    const fire = () => {
+      const wasSpeaking = synth.speaking || synth.pending;
+      if (wasSpeaking) synth.cancel();
+
+      const go = () => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.02;
+        u.pitch = 0.9;
+        const pick = synth
+          .getVoices()
+          .find((v) => /Google UK English Male|Daniel|Microsoft (Guy|Ryan)/i.test(v.name));
+        if (pick) u.voice = pick;
+
+        // Chrome/Edge on Windows frequently drop the onstart/onend events
+        // right after a cancel() - set speaking optimistically and clear it
+        // with a fallback timer (~110ms/word) so the UI never desyncs from
+        // what's actually being said, whether or not those events fire.
+        setSpeaking(true);
+        const fallbackMs = Math.max(1200, text.split(/\s+/).length * 350);
+        const fallback = setTimeout(() => setSpeaking(false), fallbackMs);
+        u.onstart = () => setSpeaking(true);
+        u.onend = () => {
+          clearTimeout(fallback);
+          setSpeaking(false);
+        };
+        u.onerror = () => {
+          clearTimeout(fallback);
+          setSpeaking(false);
+        };
+        synth.speak(u);
+      };
+
+      // Give a just-cancelled utterance a beat to flush - starting a new one
+      // immediately after cancel() is what causes Chrome to drop its events.
+      wasSpeaking ? setTimeout(go, 60) : go();
+    };
+
+    // Chrome loads the voice list asynchronously - if it's not ready yet,
+    // wait for it once so the right voice is picked on the first (only) call.
+    if (synth.getVoices().length === 0) {
+      const onReady = () => {
+        synth.removeEventListener("voiceschanged", onReady);
+        fire();
+      };
+      synth.addEventListener("voiceschanged", onReady);
+    } else {
+      fire();
+    }
   }, []);
 
   const onResult = useCallback((cb: (t: string) => void) => {

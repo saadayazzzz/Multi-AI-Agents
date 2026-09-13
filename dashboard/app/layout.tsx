@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "JARVIS Console",
-  description: "Voice control plane for the multi-agent skincare pipeline",
+  description: "Voice control plane for the autonomous content-marketing agent team",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

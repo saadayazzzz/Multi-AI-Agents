@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { MarketItem } from "@/lib/api";
+import type { TrendItem } from "@/lib/api";
 
 // spoke angles (deg; 0 = right, clockwise) — kept away from straight up/down
 const SLOTS = [-146, -34, 34, 146];
 const CYCLE_MS = 4200;
 
-const SENT: Record<string, string> = {
-  positive: "#43d9a3",
-  negative: "#ff5c72",
-  neutral: "#38e0d0",
+const PLATFORM_COLOR: Record<string, string> = {
+  youtube: "#ff5c72",
+  instagram: "#e0538e",
+  linkedin: "#38e0d0",
 };
 
-/** Live worldwide-market headlines that flow in on the core's radial lines. */
-export function CoreCallouts({ items }: { items: MarketItem[] }) {
+/** Live trend headlines that flow in on the core's radial lines. */
+export function CoreCallouts({ items }: { items: TrendItem[] }) {
   const [d, setD] = useState({ w: 0, h: 0 });
   const [rot, setRot] = useState(0);
 
@@ -60,6 +60,7 @@ export function CoreCallouts({ items }: { items: MarketItem[] }) {
         {slots.map((s) => {
           if (!s.it) return null;
           const len = Math.hypot(s.kx - s.nx, s.ky - s.ny);
+          const color = PLATFORM_COLOR[s.it.platform] ?? "#38e0d0";
           return (
             <g key={`${s.deg}-${s.it.id}-${rot}`}>
               <line
@@ -67,7 +68,7 @@ export function CoreCallouts({ items }: { items: MarketItem[] }) {
                 y1={s.ny}
                 x2={s.kx}
                 y2={s.ky}
-                stroke={SENT[s.it.sentiment ?? "neutral"]}
+                stroke={color}
                 strokeWidth="1.2"
                 strokeOpacity="0.7"
                 strokeLinecap="round"
@@ -78,8 +79,8 @@ export function CoreCallouts({ items }: { items: MarketItem[] }) {
                   filter: "drop-shadow(0 0 4px currentColor)",
                 }}
               />
-              <circle cx={s.nx} cy={s.ny} r="2.4" fill={SENT[s.it.sentiment ?? "neutral"]} />
-              <circle cx={s.kx} cy={s.ky} r="2.4" fill={SENT[s.it.sentiment ?? "neutral"]} />
+              <circle cx={s.nx} cy={s.ny} r="2.4" fill={color} />
+              <circle cx={s.kx} cy={s.ky} r="2.4" fill={color} />
             </g>
           );
         })}
@@ -87,6 +88,7 @@ export function CoreCallouts({ items }: { items: MarketItem[] }) {
 
       {slots.map((s) => {
         if (!s.it) return null;
+        const color = PLATFORM_COLOR[s.it.platform] ?? "#38e0d0";
         return (
           <div
             key={`${s.deg}-${s.it.id}-${rot}`}
@@ -102,17 +104,15 @@ export function CoreCallouts({ items }: { items: MarketItem[] }) {
             <div
               className="inline-flex flex-col gap-0.5 bg-black/55 px-2 py-1 backdrop-blur-sm"
               style={{
-                borderLeft: s.leftSide ? "none" : `2px solid ${SENT[s.it.sentiment ?? "neutral"]}`,
-                borderRight: s.leftSide ? `2px solid ${SENT[s.it.sentiment ?? "neutral"]}` : "none",
+                borderLeft: s.leftSide ? "none" : `2px solid ${color}`,
+                borderRight: s.leftSide ? `2px solid ${color}` : "none",
               }}
             >
               <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-jarvis/45">
-                {s.it.tag ?? "market"} · {s.it.region ?? "global"}
+                {s.it.platform} · {s.it.format ?? "trend"}
               </span>
               <span className="text-[11px] font-medium leading-tight text-jarvis-soft">
-                {s.it.headline.length > 84
-                  ? s.it.headline.slice(0, 82) + "…"
-                  : s.it.headline}
+                {s.it.topic.length > 84 ? s.it.topic.slice(0, 82) + "…" : s.it.topic}
               </span>
               <span className="font-mono text-[8px] text-jarvis/35">{s.it.source ?? "—"}</span>
             </div>
