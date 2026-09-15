@@ -29,6 +29,7 @@ import { Analytics } from "@/components/Analytics";
 import { GeoScore } from "@/components/GeoScore";
 import { OutreachPanel } from "@/components/OutreachPanel";
 import { StudioPanel } from "@/components/StudioPanel";
+import { AdsPanel } from "@/components/AdsPanel";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -292,6 +293,8 @@ export default function Console() {
 
       <HudPanel corner="bl" open={isOpen("bl")} title="Studio · Pipeline · Tasks" count={tasks.length}>
         <StudioPanel />
+        <div className="border-t border-jarvis/15" />
+        <AdsPanel />
         <div className="border-t border-jarvis/15" />
         <OutreachPanel />
         <div className="border-t border-jarvis/15" />
