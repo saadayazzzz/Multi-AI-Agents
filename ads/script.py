@@ -13,12 +13,17 @@ _SYSTEM = (
     "short punchy sentences written to be read aloud, one concrete benefit "
     "or result, and a soft CTA at the end (follow for more / link in bio / "
     "try it yourself - never pushy).\n\n"
-    "Writing visual_prompts: image models cannot render legible screens - "
-    "any request for a UI, dashboard, chart, or on-screen text comes out an "
-    "illegible smear. Never describe on-screen content. Describe real "
-    "physical scenes instead: hands, products, everyday settings, textures, "
-    "lighting - things a camera actually photographs well. One clear subject "
-    "per prompt, vertical framing in mind."
+    "Writing visual_prompts: the image model behind this is free and "
+    "unreliable on two things - (1) legible on-screen content: any request "
+    "for a UI, dashboard, chart, or on-screen text comes out an illegible "
+    "smear, so never describe on-screen content; (2) complex human anatomy: "
+    "wide shots of full bodies, faces mid-expression, or unusual poses often "
+    "come out warped, so avoid describing a person's face or pose in detail. "
+    "Strongly prefer close-up shots of hands, products, objects, textures, "
+    "and simple everyday settings - things a camera photographs reliably. If "
+    "a person must appear, keep it to hands/shoulders only, doing one simple "
+    "action (holding, pouring, tapping), in bright even lighting, vertical "
+    "framing, one clear subject per prompt."
 )
 
 _SCHEMA = {

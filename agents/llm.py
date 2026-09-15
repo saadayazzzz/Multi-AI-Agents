@@ -34,6 +34,37 @@ ExecuteFn = Callable[[str, dict], tuple[str, bool]]
 EmitFn = Callable[[str, str, str, dict], None]
 
 
+def _openai_image(client: Any, prompt: str, size: str) -> bytes:
+    """Shared OpenAI image-generation path (gpt-image-1 -> dall-e-3 -> -2).
+
+    Used both by the OpenAI backend directly and, when OPENAI_API_KEY is
+    configured, as the preferred image path for the other backends (their own
+    image models are either nonexistent or free-tier-gated to a hard 0
+    quota) - text/orchestration can stay on a free provider while images use
+    a paid one that actually has credit.
+    """
+    import base64
+
+    last: Exception | None = None
+    for model in (settings.openai_image_model, "dall-e-3", "dall-e-2"):
+        kwargs: dict[str, Any] = {"model": model, "prompt": prompt, "size": size, "n": 1}
+        if model.startswith("dall-e"):
+            kwargs["response_format"] = "b64_json"
+            if model == "dall-e-2":
+                kwargs["size"] = "1024x1024"
+        try:
+            d = client.images.generate(**kwargs).data[0]
+            if getattr(d, "b64_json", None):
+                return base64.b64decode(d.b64_json)
+            if getattr(d, "url", None):
+                import httpx
+
+                return httpx.get(d.url, timeout=60).content
+        except Exception as e:  # noqa: BLE001 - try the next model
+            last = e
+    raise RuntimeError(f"image generation failed: {last}")
+
+
 # --------------------------------------------------------------------------- #
 # Anthropic backend
 # --------------------------------------------------------------------------- #
@@ -191,26 +222,7 @@ class _OpenAI:
         return "".join(parts)
 
     def generate_image(self, prompt: str, size: str) -> bytes:
-        import base64
-
-        last: Exception | None = None
-        for model in (settings.openai_image_model, "dall-e-3", "dall-e-2"):
-            kwargs: dict[str, Any] = {"model": model, "prompt": prompt, "size": size, "n": 1}
-            if model.startswith("dall-e"):
-                kwargs["response_format"] = "b64_json"
-                if model == "dall-e-2":
-                    kwargs["size"] = "1024x1024"
-            try:
-                d = self.c.images.generate(**kwargs).data[0]
-                if getattr(d, "b64_json", None):
-                    return base64.b64decode(d.b64_json)
-                if getattr(d, "url", None):
-                    import httpx
-
-                    return httpx.get(d.url, timeout=60).content
-            except Exception as e:  # noqa: BLE001 - try the next model
-                last = e
-        raise RuntimeError(f"image generation failed: {last}")
+        return _openai_image(self.c, prompt, size)
 
     def tool_loop(
         self, system: str, user: str, tools: list[dict],
@@ -344,6 +356,19 @@ class _Gemini:
         return resp.text
 
     def generate_image(self, prompt: str, size: str) -> bytes:
+        # Text/orchestration stays on Gemini's free tier, but if a paid
+        # OpenAI key is configured, prefer it for images - Gemini's own
+        # image model is free-tier-gated to a hard 0 quota (confirmed via
+        # RESOURCE_EXHAUSTED), so this is strictly better when available.
+        if settings.openai_api_key:
+            try:
+                from openai import OpenAI
+
+                oai_size = size if size in ("1024x1024", "1024x1536", "1536x1024") else "1024x1536"
+                return _openai_image(OpenAI(api_key=settings.openai_api_key), prompt, oai_size)
+            except Exception:  # noqa: BLE001 - fall through to Gemini/Pollinations
+                pass
+
         t = self._types
         try:
             resp = self.c.models.generate_content(
@@ -363,21 +388,46 @@ class _Gemini:
                 import httpx
                 from PIL import Image
 
-                # flux-realism + enhance gives noticeably more photorealistic
-                # results than Pollinations' default model/prompt handling.
+                # enhance gives noticeably more photorealistic results than
+                # Pollinations' default prompt handling. Bright/soft lighting
+                # cues avoid the underexposed, muddy-anatomy failure mode that
+                # "cinematic/moody lighting" tends to trigger on this model.
                 boosted = (
                     f"{prompt}, photorealistic, professional photography, "
-                    "cinematic lighting, shallow depth of field, DSLR, 8k, highly detailed"
+                    "bright soft natural lighting, clean simple composition, "
+                    "shallow depth of field, DSLR, 8k, highly detailed"
                 )
+                try:
+                    req_w, req_h = (int(v) for v in size.lower().split("x", 1))
+                except ValueError:
+                    req_w, req_h = 1024, 1024
                 url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(boosted)
-                r = httpx.get(
-                    url, timeout=90,
-                    params={
-                        "width": 1024, "height": 1024, "nologo": "true",
-                        "model": "flux-realism", "enhance": "true",
-                    },
-                )
-                r.raise_for_status()
+
+                # Free/shared service - flaky under load (occasional 429/500/
+                # timeout unrelated to the request itself). Retry a few times
+                # before giving up, then fall back to a plain square request
+                # (its most-exercised, most-reliable shape) as a last resort.
+                import time as _time
+
+                r = None
+                last_err: Exception | None = None
+                for attempt, (w, h) in enumerate(
+                    [(req_w, req_h)] * 2 + [(1024, 1024)]
+                ):
+                    try:
+                        r = httpx.get(
+                            url, timeout=45,
+                            params={"width": w, "height": h, "nologo": "true", "enhance": "true"},
+                        )
+                        r.raise_for_status()
+                        break
+                    except Exception as e:  # noqa: BLE001
+                        last_err = e
+                        r = None
+                        if attempt < 2:
+                            _time.sleep(2 * (attempt + 1))
+                if r is None:
+                    raise last_err  # noqa: RSE102
 
                 # The free tier ignores nologo and stamps a watermark in the
                 # bottom-right corner regardless - crop that strip off and

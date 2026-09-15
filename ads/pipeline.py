@@ -17,6 +17,12 @@ from ads.script import script
 
 _AI_DISCLOSURE = "\n\nThis ad was created with AI - script, voiceover, and visuals."
 
+# Generate B-roll already portrait instead of square - a hard crop from
+# square into 9:16 is what was clipping faces/limbs. 1024x1536 is gpt-image-1's
+# native portrait size; the free Pollinations fallback accepts arbitrary
+# sizes too, so this shape works either way image generation lands.
+_SHOT_SIZE = "1024x1536"
+
 
 def make_ugc_ad(
     niche: str,
@@ -48,7 +54,7 @@ def make_ugc_ad(
         images: list[bytes] = []
         for i, prompt in enumerate(sc["visual_prompts"], 1):
             report(f"    shot {i}/{len(sc['visual_prompts'])}: {prompt[:70]}")
-            images.append(generate_image(prompt, size=settings.image_size))
+            images.append(generate_image(prompt, size=_SHOT_SIZE))
 
         srt_path = None
         if words:
