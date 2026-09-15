@@ -90,3 +90,37 @@ CREATE TABLE IF NOT EXISTS system_state (
     CONSTRAINT system_state_singleton CHECK (id = 1)
 );
 INSERT INTO system_state (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Agent 5: rolling feed of AI-search / GEO industry developments.
+CREATE TABLE IF NOT EXISTS market_feed (
+    id         BIGSERIAL PRIMARY KEY,
+    ts         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    headline   TEXT NOT NULL,
+    detail     TEXT,
+    tag        TEXT,        -- platform | shift | tool | funding | study | regulation | tactic
+    sentiment  TEXT,        -- positive | neutral | negative
+    region     TEXT,
+    source     TEXT,
+    UNIQUE (headline)
+);
+CREATE INDEX IF NOT EXISTS idx_market_feed_id ON market_feed (id);
+
+-- Agent 9 (Ad Studio): faceless AI UGC ad creatives - AI script + AI
+-- voiceover + B-roll + burned captions, ready to post as a paid-social ad.
+CREATE TABLE IF NOT EXISTS ads (
+    id            SERIAL PRIMARY KEY,
+    niche         TEXT NOT NULL,
+    product       TEXT,
+    hook          TEXT,
+    script        TEXT,                          -- full voiceover text
+    seconds       NUMERIC,
+    path          TEXT,                          -- rendered vertical mp4
+    thumb_path    TEXT,
+    youtube_id    TEXT,
+    youtube_url   TEXT,
+    privacy       TEXT NOT NULL DEFAULT 'unlisted',
+    status        TEXT NOT NULL DEFAULT 'queued', -- queued|scripted|rendered|uploaded|failed
+    error         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ads_status ON ads (status, created_at DESC);

@@ -21,3 +21,7 @@ output/
 *.log
 install.log
 build.log
+leads.xlsx
+*.xlsx
+youtube_client_secret.json
+youtube_token.json

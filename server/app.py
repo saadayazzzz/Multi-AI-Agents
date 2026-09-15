@@ -33,7 +33,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4"]
+_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5",
+           "geo", "sales", "studio", "ads"]
 
 _content_dir = Path(settings.output_dir) / "content"
 _content_dir.mkdir(parents=True, exist_ok=True)
@@ -261,6 +262,106 @@ async def list_tasks(limit: int = 40) -> list[dict[str, Any]]:
 @app.get("/api/trends")
 async def trends(limit: int = 30) -> list[dict[str, Any]]:
     return await run_in_threadpool(_recent_trends, min(limit, 100))
+
+
+def _geo_latest() -> dict[str, Any] | None:
+    with get_conn() as conn:
+        sc = conn.execute(
+            """
+            SELECT s.*, p.brand, p.domain, p.competitors
+            FROM visibility_scores s JOIN projects p ON p.id = s.project_id
+            ORDER BY s.id DESC LIMIT 1
+            """
+        ).fetchone()
+        if not sc:
+            return None
+        rows = conn.execute(
+            """
+            SELECT q.text, q.intent, pr.brand_mentioned, pr.brand_position,
+                   pr.brand_recommended, pr.sentiment, pr.competitor_mentions
+            FROM probes pr JOIN queries q ON q.id = pr.query_id
+            WHERE pr.run_id = %s ORDER BY pr.id
+            """,
+            (sc["run_id"],),
+        ).fetchall()
+    return {"score": _iso(sc), "queries": [_iso(r) for r in rows]}
+
+
+@app.get("/api/geo/latest")
+async def geo_latest() -> dict[str, Any] | None:
+    return await run_in_threadpool(_geo_latest)
+
+
+def _outreach_latest() -> dict[str, Any] | None:
+    with get_conn() as conn:
+        camp = conn.execute("SELECT * FROM campaigns ORDER BY id DESC LIMIT 1").fetchone()
+        if not camp:
+            return None
+        leads = conn.execute(
+            """
+            SELECT id, company, domain, contact_role, contact_email, email_status,
+                   icp_fit, geo_score, geo_finding, status
+            FROM leads WHERE campaign_id = %s ORDER BY id DESC LIMIT 40
+            """,
+            (camp["id"],),
+        ).fetchall()
+        counts = {
+            r["status"]: r["n"]
+            for r in conn.execute(
+                "SELECT status, COUNT(*) n FROM leads WHERE campaign_id = %s GROUP BY status",
+                (camp["id"],),
+            ).fetchall()
+        }
+        sample = conn.execute(
+            """
+            SELECT l.company, m.subject, m.body
+            FROM messages m JOIN leads l ON l.id = m.lead_id
+            WHERE l.campaign_id = %s AND m.step = 1 ORDER BY m.id DESC LIMIT 1
+            """,
+            (camp["id"],),
+        ).fetchone()
+    return {
+        "campaign": _iso(camp),
+        "counts": counts,
+        "total": sum(counts.values()),
+        "leads": [_iso(r) for r in leads],
+        "sample": _iso(sample) if sample else None,
+    }
+
+
+@app.get("/api/outreach/latest")
+async def outreach_latest() -> dict[str, Any] | None:
+    return await run_in_threadpool(_outreach_latest)
+
+
+def _studio_recent(n: int = 8) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, theme, title, clip_count, seconds, privacy, status, "
+            "youtube_url, created_at FROM videos ORDER BY id DESC LIMIT %s",
+            (n,),
+        ).fetchall()
+    return [_iso(r) for r in rows]
+
+
+@app.get("/api/studio/recent")
+async def studio_recent() -> list[dict[str, Any]]:
+    return await run_in_threadpool(_studio_recent)
+
+
+def _ads_recent(n: int = 8) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, niche, product, hook, seconds, privacy, status, "
+            "youtube_url, created_at FROM ads ORDER BY id DESC LIMIT %s",
+            (n,),
+        ).fetchall()
+    return [_iso(r) for r in rows]
+
+
+@app.get("/api/ads/recent")
+async def ads_recent() -> list[dict[str, Any]]:
+    return await run_in_threadpool(_ads_recent)
 
 
 @app.post("/api/tasks", status_code=201)

@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTask, getContent, setPower, type ContentPiece } from "@/lib/api";
+import {
+  createTask,
+  getContent,
+  getGeoLatest,
+  getOutreachLatest,
+  setPower,
+  type ContentPiece,
+  type GeoLatest,
+  type OutreachLatest,
+} from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
 import { useClapDetector } from "@/lib/useClapDetector";
@@ -17,6 +26,9 @@ import { TaskQueue } from "@/components/TaskQueue";
 import { ApprovalQueue } from "@/components/ApprovalQueue";
 import { ContentReviewModal } from "@/components/ContentReviewModal";
 import { Analytics } from "@/components/Analytics";
+import { GeoScore } from "@/components/GeoScore";
+import { OutreachPanel } from "@/components/OutreachPanel";
+import { StudioPanel } from "@/components/StudioPanel";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -35,7 +47,23 @@ export default function Console() {
   const [pulse, setPulse] = useState(false);
   const [flash, setFlash] = useState(0);
   const [localPower, setLocalPower] = useState<"on" | "off" | null>(null);
+  const [geo, setGeo] = useState<GeoLatest | null>(null);
+  const [outreach, setOutreach] = useState<OutreachLatest | null>(null);
   const spokenId = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      getGeoLatest().then((d) => alive && d && setGeo(d)).catch(() => {});
+      getOutreachLatest().then((d) => alive && d && setOutreach(d)).catch(() => {});
+    };
+    load();
+    const iv = setInterval(load, 5000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, []);
   const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
   const [content, setContent] = useState<ContentPiece[]>([]);
   const refreshContent = useCallback(() => {
@@ -252,16 +280,23 @@ export default function Console() {
         <ActivityFeed events={events} />
       </HudPanel>
 
-      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 4}>
+      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 9}>
         <AgentGrid agents={agents} busy={busy} />
       </HudPanel>
 
-      <HudPanel corner="br" open={isOpen("br")} title="Analytics">
+      <HudPanel corner="br" open={isOpen("br")} title="Visibility · Analytics">
+        <GeoScore />
+        <div className="border-t border-jarvis/15" />
         <Analytics stats={stats} tasks={tasks} />
       </HudPanel>
 
-      <HudPanel corner="bl" open={isOpen("bl")} title="Tasks" count={tasks.length}>
+      <HudPanel corner="bl" open={isOpen("bl")} title="Studio · Pipeline · Tasks" count={tasks.length}>
+        <StudioPanel />
+        <div className="border-t border-jarvis/15" />
+        <OutreachPanel />
+        <div className="border-t border-jarvis/15" />
         <ApprovalQueue items={awaitingApproval} onApproved={refreshContent} onOpen={setReviewing} />
+        <div className="border-t border-jarvis/15" />
         <TaskQueue tasks={tasks} />
       </HudPanel>
 
@@ -285,15 +320,20 @@ export default function Console() {
           <JarvisCore
             state={coreState}
             readouts={[
-              { label: "Trends", value: stats?.trends_total ?? "–" },
+              {
+                label: "Score",
+                value: geo ? Number(geo.score.score).toFixed(0) : "–",
+              },
+              { label: "Leads", value: outreach?.total ?? "–" },
               { label: "Content", value: stats?.content_total ?? "–" },
-              { label: "Tasks", value: tasks.length },
               { label: "Feed", value: trends.length },
             ]}
           />
           <div className="flex h-5 items-center gap-2">
-            <span className="label holo">
-              {off ? "Powered down" : CORE_COPY[coreState]}
+            <span
+              className={`label holo ${coreState === "speaking" ? "anim-label-blink text-jarvis-soft" : ""}`}
+            >
+              {off ? "Powered down" : coreState === "speaking" ? "◂ Speaking ▸" : CORE_COPY[coreState]}
             </span>
             {voice.listening && voice.interim && (
               <span className="row-in max-w-sm truncate font-mono text-xs text-jarvis-amber">
