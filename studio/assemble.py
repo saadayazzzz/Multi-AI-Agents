@@ -7,7 +7,7 @@ from pathlib import Path
 
 _VF = (
     "scale=1920:1080:force_original_aspect_ratio=increase,"
-    "crop=1920:1080,fps=30,format=yuv420p"
+    "crop=1920:1080,fps=60,format=yuv420p"
 )
 
 
