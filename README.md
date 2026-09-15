@@ -1,45 +1,83 @@
-# JARVIS — Multi-Agent Skincare / Cosmetics System
+# JARVIS — Multi-Agent Growth & Content Console
 
-A voice-driven console over a team of three Claude agents, plus an autonomous
-worker that keeps executing tasks whether or not you're watching.
+A voice-driven, Iron-Man-style console over a team of nine specialist agents,
+plus an autonomous worker that keeps executing tasks whether or not you're
+watching.
 
 ```
- Browser console (Next.js)          you talk / type here
+ Browser console (Next.js, :3737)       you talk / type here
         │  REST + WebSocket
         ▼
  FastAPI control plane  ──────────►  Postgres  ◄────────── Autonomous worker (loop)
    server/app.py                       tasks                 server/worker.py
                                     task_events             └─ JARVIS orchestrator (server/brain.py)
-                                    sites / products            routes each command to:
-                                    generated_brand              ├ Agent 1  discover sites
-                                                                 ├ Agent 2  scrape & store
-                                                                 └ Agent 3  design brand + build Next.js store
+                                    trends / content_pieces      routes each command to:
+                                    market_feed / ads               ├ Agent 1  Trend Scout
+                                    (+ geo/, outreach/,              ├ Agent 2  Content Studio
+                                     studio/ schemas)                ├ Agent 3  Visual Studio
+                                                                     ├ Agent 4  Publisher
+                                                                     ├ Agent 5  AI-Search Pulse
+                                                                     ├ Agent 6  AI Search Visibility (GEO)
+                                                                     ├ Agent 7  Outbound Sales
+                                                                     ├ Agent 8  Video Studio
+                                                                     └ Agent 9  Ad Studio
 ```
 
 - **Voice** — browser Web Speech API (Chrome/Edge). Speech-to-text for commands,
   text-to-speech for JARVIS's replies. No extra keys. Falls back to a text box.
-- **Brain** — `server/brain.py` is a `claude-opus-5` tool-use loop. It reads your
-  natural-language command and chains the agents ("find fresh sites and rebuild the
-  store" → discover → scrape → build). It can also schedule recurring tasks.
-- **Autonomy** — the worker is its own process. Closing the console doesn't stop
-  work; recurring tasks keep firing on their interval.
+- **Brain** — `server/brain.py` is a tool-use loop (Gemini/OpenAI/Anthropic,
+  whichever `LLM_PROVIDER` you pick). It reads your natural-language command
+  and chains agents as needed, then reports back in one spoken line.
+- **Autonomy** — the worker is its own process. Closing the console doesn't
+  stop work; recurring tasks (`schedule_recurring`) keep firing on interval,
+  and Agent 5 pulses the AI-search news feed on its own.
+- **In-console video** — click a rendered ad or ASMR video in the dashboard
+  and it plays right there in a holographic viewer, no YouTube round-trip.
 
-Model: `claude-opus-5` (override with `MODEL`). Storage: PostgreSQL.
+## The nine agents
 
-## Responsible use
+| # | Name | Does |
+|---|------|------|
+| 1 | Trend Scout | researches what's trending on YouTube/Instagram/LinkedIn right now |
+| 2 | Content Studio | writes a platform-native script/caption/hashtags/CTA for a topic |
+| 3 | Visual Studio | generates a thumbnail/cover image for a piece of content |
+| 4 | Publisher | posts finished content live (LinkedIn/Instagram/YouTube) — **only on your explicit approval** |
+| 5 | AI-Search Pulse | scans AI-search/GEO industry news into a live feed |
+| 6 | AI Search Visibility (GEO) | scores how visible a brand is in AI answer engines vs. competitors, 0-100 |
+| 7 | Outbound Sales | prospects ICP-matched companies, runs Agent 6 on each, drafts cold-email sequences, exports `leads.xlsx` |
+| 8 | Video Studio | AI "objects cutting" ASMR videos → assemble → thumbnail → optional YouTube upload |
+| 9 | Ad Studio | faceless AI UGC ad creatives (script + voiceover + B-roll + burned captions) → optional YouTube Shorts upload |
 
-For **market research / reference only**. `RESPECT_ROBOTS=true` and a conservative
-`SCRAPE_DELAY_SECONDS` are the defaults — keep them, and put a real contact in
-`SCRAPER_USER_AGENT`. Agent 3 uses scraped data only for structure (price bands,
-category mix, ingredient vocabulary); every brand name and line of copy it emits
-is newly generated. Clear trademark/copyright yourself before any commercial use.
+Everything that posts or uploads publicly defaults to safe/reversible
+(UNLISTED YouTube uploads with an AI-content disclosure, no LinkedIn/
+Instagram post without your explicit go-ahead in the conversation).
+
+## Model backend
+
+Provider-agnostic (`agents/llm.py`) — pick with `LLM_PROVIDER`:
+
+- `gemini` (**default, recommended**) — free tier, no card. `GEMINI_API_KEY`
+  from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- `openai` — needs a billed `OPENAI_API_KEY`.
+- `anthropic` — a real API key or a `claude setup-token` OAuth token.
+
+**Images** go through their own chain regardless of `LLM_PROVIDER`, first
+match wins: **OpenRouter** (`OPENROUTER_API_KEY`, cheap + good quality,
+[openrouter.ai](https://openrouter.ai/settings/keys)) → **OpenAI**
+(`gpt-image-1`) → the active backend's own image model (Gemini's is
+free-tier-gated to 0 quota) → **Pollinations.ai** (free, no key, last resort).
+
+**Video** (Agent 8/9 B-roll clips) — `VIDEO_PROVIDER`: `comfy` (local
+ComfyUI on your own GPU, free & unlimited — see `studio/README_comfy.md`),
+`hf` (Hugging Face Inference, small free credit), or `openai` (Sora, paid).
+Agent 9's voiceover is always free (`edge-tts`, no key).
 
 ## Setup
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env                # ANTHROPIC_API_KEY optional (else uses `ant` profile)
+copy .env.example .env                # fill in at least GEMINI_API_KEY
 docker compose up -d                  # Postgres on :5432
 python orchestrator.py initdb
 
@@ -59,44 +97,77 @@ cd dashboard && npm run dev           # 3) console                :3737
 
 Open <http://localhost:3737>, click the mic, and speak. Example commands:
 
-- "Discover some new skincare sites."
-- "Scrape the sites we found, five at most."
-- "Design a brand and build the store."
-- "Find fresh sites, scrape them, then rebuild the store."
-- "Keep discovering new sites every sixty minutes."   ← recurring, runs while you're away
+- "What's trending on LinkedIn right now?"
+- "Write a LinkedIn post about AI agents and make a thumbnail."
+- "How visible is Notion in AI search compared to Coda and ClickUp?"
+- "Find me clients — ICP is Series A SaaS founders, offer is AI agent builds."
+- "Make a soap-cutting ASMR video and upload it."
+- "Make a UGC ad for natural hair growth remedies, 20 seconds."
+- "Keep finding trends every sixty minutes." ← recurring, runs while you're away
 
 ## Headless pipeline (no console)
 
 ```bash
-python orchestrator.py all            # discover -> scrape -> build
-python orchestrator.py build          # just agent 3
-```
+python orchestrator.py all            # trends -> content -> visuals -> publish
+python orchestrator.py trends --platform linkedin
+python orchestrator.py content --platform linkedin
+python orchestrator.py visuals --content-id 12
+python orchestrator.py publish --content-id 12
 
-## Generated stores
-
-Agent 3 writes a runnable Next.js app per brand to `output/<slug>/`:
-
-```bash
-cd output/<slug> && npm install && npm run dev
+python studio_cli.py auth                              # one-time YouTube OAuth
+python studio_cli.py make "soap cutting" --upload
+python ads_cli.py make "skincare" --product "vitamin C serum" --upload
+python geo_cli.py new-project --account jarvis --brand acme --category "SEO tools" --competitors ahrefs,semrush
+python outreach_cli.py campaign --name jarvis --icp "..." --offer "..."
 ```
 
 ## Layout
 
 ```
-config.py                 env-backed settings
-orchestrator.py           CLI: initdb | discover | scrape | build | all | serve | worker
-db/schema.sql             sites · pages · products · brand_profiles · generated_brand · tasks · task_events
+config.py                 env-backed settings (LLM/image/video providers, DB, server)
+orchestrator.py           CLI: initdb | trends | content | visuals | publish | all | serve | worker
+db/schema.sql             trends · content_pieces · content_images · tasks · task_events ·
+                           system_state · market_feed · ads
 agents/
-  llm.py                  Anthropic SDK wrapper (json_out / research / generate_text)
-  reporter.py             pluggable progress -> task_events
-  agent1_discovery.py     Claude + web_search -> scored site list
-  agent2_scraper.py       polite crawl -> Claude structured extraction -> Postgres
-  agent3_brand_builder.py aggregate -> original brand spec -> Next.js project
-scraper/fetcher.py        robots.txt + rate limiting + HTML -> text
+  llm.py                  provider-agnostic model layer (Gemini/OpenAI/Anthropic) +
+                           the OpenRouter -> OpenAI -> native -> Pollinations image chain
+  reporter.py              pluggable progress -> task_events
+  agent1_trends.py         Agent 1 — trend research
+  agent2_content.py        Agent 2 — platform-native copywriting
+  agent3_visuals.py        Agent 3 — thumbnail/cover generation
+  agent4_publisher.py      Agent 4 — LinkedIn/Instagram/YouTube posting
+  agent5_market.py         Agent 5 — AI-search/GEO news feed
+  platforms/               per-platform posting clients
+scraper/fetcher.py        polite crawl utility (robots.txt + rate limiting)
+geo/                      Agent 6 — AI Search Visibility pipeline (own schema.sql)
+outreach/                 Agent 7 — outbound sales/prospecting pipeline (own schema.sql)
+studio/                   Agent 8 — Video Studio: script -> clips -> ffmpeg assemble ->
+                           thumbnail -> YouTube (own schema.sql; see README_comfy.md)
+ads/                      Agent 9 — Ad Studio: script -> edge-tts voiceover -> B-roll ->
+                           ffmpeg assemble + burned captions -> YouTube
 server/
-  app.py                  FastAPI: /api/tasks, /api/stats, /api/agents, /ws
-  brain.py                JARVIS orchestrator (tool-use loop over the 3 agents)
-  worker.py               autonomous queue consumer
-dashboard/                Next.js voice console (JARVIS UI)
-output/<slug>/            generated storefronts
+  app.py                  FastAPI: /api/tasks, /api/stats, /api/agents, /api/geo,
+                           /api/outreach, /api/studio, /api/ads, /media, /ws
+  brain.py                JARVIS orchestrator (tool-use loop over all nine agents)
+  worker.py               autonomous queue consumer + Agent 5 pulse timer
+dashboard/                Next.js voice console (JARVIS HUD, in-console video viewer)
+output/                   generated content images, videos, and ad renders
 ```
+
+## Other branches
+
+- `cyber_jarvis` — Agent 8 there is an authorized, non-destructive domain
+  security assessment (subdomains, TLS, headers, exposed files, CVE
+  correlation). Only ever run against domains you own or are explicitly
+  authorized to test.
+
+## Responsible use
+
+Publishing to LinkedIn/Instagram/YouTube always requires your explicit
+approval in the conversation — nothing posts or uploads on its own. YouTube
+uploads default to **unlisted** with an AI-generated-content disclosure in
+the description; review before making anything public. Outreach emails are
+gated behind SMTP configuration and honour a suppression list; LinkedIn
+outreach stays human-driven (no automated DMs/connection requests — that's a
+ToS/ban risk). Cyber assessments (on `cyber_jarvis`) run only against
+explicitly authorized targets.
