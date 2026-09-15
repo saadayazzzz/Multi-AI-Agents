@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdsRecent, type AdVideo } from "@/lib/api";
+import { getAdsRecent, mediaUrl, type AdVideo } from "@/lib/api";
+import type { PlayingVideo } from "./VideoViewer";
+
+const PLAYABLE = new Set(["rendered", "uploaded"]);
 
 const ST: Record<string, string> = {
   queued: "text-jarvis/45",
@@ -11,7 +14,7 @@ const ST: Record<string, string> = {
   failed: "text-jarvis-red",
 };
 
-export function AdsPanel() {
+export function AdsPanel({ onPlay }: { onPlay: (v: PlayingVideo) => void }) {
   const [rows, setRows] = useState<AdVideo[]>([]);
 
   useEffect(() => {
@@ -37,8 +40,23 @@ export function AdsPanel() {
         </div>
       ) : (
         <div className="mt-2 space-y-1.5 font-mono text-[9px]">
-          {rows.map((a) => (
-            <div key={a.id} className="border border-jarvis/15 bg-black/25 px-2 py-1.5">
+          {rows.map((a) => {
+            const playable = PLAYABLE.has(a.status);
+            return (
+            <div
+              key={a.id}
+              onClick={() =>
+                playable &&
+                onPlay({
+                  url: mediaUrl("ads", a.id),
+                  title: a.hook ?? a.niche,
+                  subtitle: [a.niche, a.product].filter(Boolean).join(" · "),
+                })
+              }
+              className={`border border-jarvis/15 bg-black/25 px-2 py-1.5 ${
+                playable ? "cursor-pointer hover:border-jarvis/40 hover:bg-jarvis/[0.06]" : ""
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className={`uppercase ${ST[a.status]}`}>{a.status}</span>
                 <span className="text-jarvis/35">
@@ -53,13 +71,15 @@ export function AdsPanel() {
                   href={a.youtube_url}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="pointer-events-auto text-jarvis-ok underline"
                 >
                   {a.youtube_url}
                 </a>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getStudioRecent, type StudioVideo } from "@/lib/api";
+import { getStudioRecent, mediaUrl, type StudioVideo } from "@/lib/api";
+import type { PlayingVideo } from "./VideoViewer";
+
+const PLAYABLE = new Set(["rendered", "uploaded"]);
 
 const ST: Record<string, string> = {
   draft: "text-jarvis/45",
@@ -10,7 +13,7 @@ const ST: Record<string, string> = {
   failed: "text-jarvis-red",
 };
 
-export function StudioPanel() {
+export function StudioPanel({ onPlay }: { onPlay: (v: PlayingVideo) => void }) {
   const [rows, setRows] = useState<StudioVideo[]>([]);
 
   useEffect(() => {
@@ -36,29 +39,46 @@ export function StudioPanel() {
         </div>
       ) : (
         <div className="mt-2 space-y-1.5 font-mono text-[9px]">
-          {rows.map((v) => (
-            <div key={v.id} className="border border-jarvis/15 bg-black/25 px-2 py-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`uppercase ${ST[v.status]}`}>{v.status}</span>
-                <span className="text-jarvis/35">
-                  {v.privacy} · {v.clip_count ?? "?"}×{v.seconds ?? "?"}s
-                </span>
+          {rows.map((v) => {
+            const playable = PLAYABLE.has(v.status);
+            return (
+              <div
+                key={v.id}
+                onClick={() =>
+                  playable &&
+                  onPlay({
+                    url: mediaUrl("videos", v.id),
+                    title: v.title ?? v.theme,
+                    subtitle: v.theme,
+                  })
+                }
+                className={`border border-jarvis/15 bg-black/25 px-2 py-1.5 ${
+                  playable ? "cursor-pointer hover:border-jarvis/40 hover:bg-jarvis/[0.06]" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`uppercase ${ST[v.status]}`}>{v.status}</span>
+                  <span className="text-jarvis/35">
+                    {v.privacy} · {v.clip_count ?? "?"}×{v.seconds ?? "?"}s
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-jarvis-soft">
+                  {v.title ?? v.theme}
+                </div>
+                {v.youtube_url && (
+                  <a
+                    href={v.youtube_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="pointer-events-auto text-jarvis-ok underline"
+                  >
+                    {v.youtube_url}
+                  </a>
+                )}
               </div>
-              <div className="mt-0.5 truncate text-jarvis-soft">
-                {v.title ?? v.theme}
-              </div>
-              {v.youtube_url && (
-                <a
-                  href={v.youtube_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="pointer-events-auto text-jarvis-ok underline"
-                >
-                  {v.youtube_url}
-                </a>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

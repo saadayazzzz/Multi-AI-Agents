@@ -3,6 +3,11 @@ export const API_BASE =
 
 export const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws";
 
+/** URL for a rendered video row's file, served by the API's /media mounts. */
+export function mediaUrl(kind: "ads" | "videos", id: number): string {
+  return `${API_BASE}/media/${kind}/${id}/final.mp4`;
+}
+
 export type AgentState = {
   actor: string;
   state: "idle" | "working";

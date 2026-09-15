@@ -40,6 +40,14 @@ _content_dir = Path(settings.output_dir) / "content"
 _content_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/img/content", StaticFiles(directory=str(_content_dir)), name="content-images")
 
+# Rendered videos - one subfolder per row (output/<kind>/<id>/final.mp4 etc.),
+# served so the dashboard can play them in-place instead of only linking out
+# to YouTube once uploaded.
+for _kind in ("ads", "videos"):
+    _dir = Path(settings.output_dir) / _kind
+    _dir.mkdir(parents=True, exist_ok=True)
+    app.mount(f"/media/{_kind}", StaticFiles(directory=str(_dir)), name=f"{_kind}-media")
+
 
 @app.on_event("startup")
 def _startup() -> None:

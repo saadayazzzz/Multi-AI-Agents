@@ -30,6 +30,7 @@ import { GeoScore } from "@/components/GeoScore";
 import { OutreachPanel } from "@/components/OutreachPanel";
 import { StudioPanel } from "@/components/StudioPanel";
 import { AdsPanel } from "@/components/AdsPanel";
+import { VideoViewer, type PlayingVideo } from "@/components/VideoViewer";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -77,6 +78,7 @@ export default function Console() {
   }, [refreshContent]);
   const awaitingApproval = useMemo(() => content.filter((c) => c.status === "ready"), [content]);
   const [reviewing, setReviewing] = useState<ContentPiece | null>(null);
+  const [playing, setPlaying] = useState<PlayingVideo | null>(null);
 
   const power = localPower ?? stats?.power ?? "on";
   const off = power === "off";
@@ -292,9 +294,9 @@ export default function Console() {
       </HudPanel>
 
       <HudPanel corner="bl" open={isOpen("bl")} title="Studio · Pipeline · Tasks" count={tasks.length}>
-        <StudioPanel />
+        <StudioPanel onPlay={setPlaying} />
         <div className="border-t border-jarvis/15" />
-        <AdsPanel />
+        <AdsPanel onPlay={setPlaying} />
         <div className="border-t border-jarvis/15" />
         <OutreachPanel />
         <div className="border-t border-jarvis/15" />
@@ -302,6 +304,8 @@ export default function Console() {
         <div className="border-t border-jarvis/15" />
         <TaskQueue tasks={tasks} />
       </HudPanel>
+
+      <VideoViewer video={playing} onClose={() => setPlaying(null)} />
 
       <ContentReviewModal
         content={reviewing}
