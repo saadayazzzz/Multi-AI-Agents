@@ -65,6 +65,130 @@ def _openai_image(client: Any, prompt: str, size: str) -> bytes:
     raise RuntimeError(f"image generation failed: {last}")
 
 
+def _aspect_ratio(size: str) -> str:
+    try:
+        w, h = (int(v) for v in size.lower().split("x", 1))
+    except ValueError:
+        return "1:1"
+    ratio = w / h
+    if ratio < 0.8:
+        return "9:16"
+    if ratio > 1.2:
+        return "16:9"
+    return "1:1"
+
+
+def _openrouter_image(prompt: str, size: str) -> bytes:
+    """OpenRouter's unified gateway - tried first for image generation when
+    configured. Cheaper per image than OpenAI's gpt-image-1 at portrait
+    sizes and, unlike Gemini's direct API, not gated to a 0 free-tier quota.
+    """
+    import base64
+
+    import httpx
+
+    r = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": settings.openrouter_image_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "modalities": ["image", "text"],
+            "image_config": {"aspect_ratio": _aspect_ratio(size)},
+        },
+        timeout=60,
+    )
+    r.raise_for_status()
+    images = r.json()["choices"][0]["message"].get("images") or []
+    if not images:
+        raise RuntimeError("OpenRouter returned no image")
+    return base64.b64decode(images[0]["image_url"]["url"].split(",", 1)[1])
+
+
+def _best_effort_image(prompt: str, size: str, native: Callable[[], bytes] | None = None) -> bytes:
+    """Try, in order: OpenRouter -> OpenAI -> the backend's own image model
+    (if given) -> Pollinations.ai (free, no key, last resort). Each provider
+    is only tried if configured; the first success wins.
+    """
+    import io
+
+    import httpx
+    from PIL import Image
+
+    errs: list[str] = []
+
+    if settings.openrouter_api_key:
+        try:
+            return _openrouter_image(prompt, size)
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"openrouter: {e}")
+
+    if settings.openai_api_key:
+        try:
+            from openai import OpenAI
+
+            oai_size = size if size in ("1024x1024", "1024x1536", "1536x1024") else "1024x1536"
+            return _openai_image(OpenAI(api_key=settings.openai_api_key), prompt, oai_size)
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"openai: {e}")
+
+    if native is not None:
+        try:
+            return native()
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"native: {e}")
+
+    try:
+        boosted = (
+            f"{prompt}, photorealistic, professional photography, "
+            "bright soft natural lighting, clean simple composition, "
+            "shallow depth of field, DSLR, 8k, highly detailed"
+        )
+        try:
+            req_w, req_h = (int(v) for v in size.lower().split("x", 1))
+        except ValueError:
+            req_w, req_h = 1024, 1024
+        import urllib.parse
+        import time as _time
+
+        url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(boosted)
+        r = None
+        last_err: Exception | None = None
+        for attempt, (w, h) in enumerate([(req_w, req_h)] * 2 + [(1024, 1024)]):
+            try:
+                r = httpx.get(
+                    url, timeout=45,
+                    params={"width": w, "height": h, "nologo": "true", "enhance": "true"},
+                )
+                r.raise_for_status()
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                r = None
+                if attempt < 2:
+                    _time.sleep(2 * (attempt + 1))
+        if r is None:
+            raise last_err  # noqa: RSE102
+
+        # The free tier ignores nologo and stamps a watermark in the
+        # bottom-right corner regardless - crop that strip off and scale
+        # back up rather than ship a competitor's logo.
+        img = Image.open(io.BytesIO(r.content))
+        w, h = img.size
+        crop_h = h - int(h * 0.06)
+        img = img.crop((0, 0, w, crop_h)).resize((w, h), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+    except Exception as e:  # noqa: BLE001
+        errs.append(f"pollinations: {e}")
+
+    raise RuntimeError("image generation failed (" + "; ".join(errs) + ")")
+
+
 # --------------------------------------------------------------------------- #
 # Anthropic backend
 # --------------------------------------------------------------------------- #
@@ -124,9 +248,9 @@ class _Anthropic:
         return "\n".join(b.text for b in msg.content if b.type == "text")
 
     def generate_image(self, prompt: str, size: str) -> bytes:
-        raise RuntimeError(
-            "image generation needs LLM_PROVIDER=openai (Anthropic has no image model)"
-        )
+        # Anthropic has no image model of its own - route through
+        # OpenRouter/OpenAI/Pollinations regardless.
+        return _best_effort_image(prompt, size)
 
     def tool_loop(
         self, system: str, user: str, tools: list[dict],
@@ -222,7 +346,9 @@ class _OpenAI:
         return "".join(parts)
 
     def generate_image(self, prompt: str, size: str) -> bytes:
-        return _openai_image(self.c, prompt, size)
+        # _best_effort_image already tries OpenAI (via settings.openai_api_key)
+        # right after OpenRouter, so no separate "native" path is needed here.
+        return _best_effort_image(prompt, size)
 
     def tool_loop(
         self, system: str, user: str, tools: list[dict],
@@ -356,21 +482,13 @@ class _Gemini:
         return resp.text
 
     def generate_image(self, prompt: str, size: str) -> bytes:
-        # Text/orchestration stays on Gemini's free tier, but if a paid
-        # OpenAI key is configured, prefer it for images - Gemini's own
-        # image model is free-tier-gated to a hard 0 quota (confirmed via
-        # RESOURCE_EXHAUSTED), so this is strictly better when available.
-        if settings.openai_api_key:
-            try:
-                from openai import OpenAI
-
-                oai_size = size if size in ("1024x1024", "1024x1536", "1536x1024") else "1024x1536"
-                return _openai_image(OpenAI(api_key=settings.openai_api_key), prompt, oai_size)
-            except Exception:  # noqa: BLE001 - fall through to Gemini/Pollinations
-                pass
-
-        t = self._types
-        try:
+        # Text/orchestration stays on Gemini's free tier; images go through
+        # the shared OpenRouter -> OpenAI -> (Gemini's own model) ->
+        # Pollinations chain - Gemini's own image model is free-tier-gated
+        # to a hard 0 quota (confirmed via RESOURCE_EXHAUSTED), so it rarely
+        # actually gets used, but stays as a native option if ever billed.
+        def _native() -> bytes:
+            t = self._types
             resp = self.c.models.generate_content(
                 model=self.image_model,
                 contents=prompt,
@@ -380,69 +498,8 @@ class _Gemini:
                 if getattr(part, "inline_data", None):
                     return part.inline_data.data
             raise RuntimeError("Gemini returned no image part")
-        except Exception as gemini_err:
-            try:
-                import io
-                import urllib.parse
 
-                import httpx
-                from PIL import Image
-
-                # enhance gives noticeably more photorealistic results than
-                # Pollinations' default prompt handling. Bright/soft lighting
-                # cues avoid the underexposed, muddy-anatomy failure mode that
-                # "cinematic/moody lighting" tends to trigger on this model.
-                boosted = (
-                    f"{prompt}, photorealistic, professional photography, "
-                    "bright soft natural lighting, clean simple composition, "
-                    "shallow depth of field, DSLR, 8k, highly detailed"
-                )
-                try:
-                    req_w, req_h = (int(v) for v in size.lower().split("x", 1))
-                except ValueError:
-                    req_w, req_h = 1024, 1024
-                url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(boosted)
-
-                # Free/shared service - flaky under load (occasional 429/500/
-                # timeout unrelated to the request itself). Retry a few times
-                # before giving up, then fall back to a plain square request
-                # (its most-exercised, most-reliable shape) as a last resort.
-                import time as _time
-
-                r = None
-                last_err: Exception | None = None
-                for attempt, (w, h) in enumerate(
-                    [(req_w, req_h)] * 2 + [(1024, 1024)]
-                ):
-                    try:
-                        r = httpx.get(
-                            url, timeout=45,
-                            params={"width": w, "height": h, "nologo": "true", "enhance": "true"},
-                        )
-                        r.raise_for_status()
-                        break
-                    except Exception as e:  # noqa: BLE001
-                        last_err = e
-                        r = None
-                        if attempt < 2:
-                            _time.sleep(2 * (attempt + 1))
-                if r is None:
-                    raise last_err  # noqa: RSE102
-
-                # The free tier ignores nologo and stamps a watermark in the
-                # bottom-right corner regardless - crop that strip off and
-                # scale back up rather than ship a competitor's logo.
-                img = Image.open(io.BytesIO(r.content))
-                w, h = img.size
-                crop_h = h - int(h * 0.06)
-                img = img.crop((0, 0, w, crop_h)).resize((w, h), Image.LANCZOS)
-                buf = io.BytesIO()
-                img.convert("RGB").save(buf, format="JPEG", quality=92)
-                return buf.getvalue()
-            except Exception as poll_err:
-                raise RuntimeError(
-                    f"image generation failed (gemini: {gemini_err}; pollinations: {poll_err})"
-                ) from poll_err
+        return _best_effort_image(prompt, size, native=_native)
 
     def tool_loop(
         self, system: str, user: str, tools: list[dict],

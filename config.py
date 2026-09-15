@@ -37,6 +37,12 @@ class Settings:
     image_size: str = os.getenv("IMAGE_SIZE", "1024x1024")
     max_images: int = int(os.getenv("MAX_IMAGES", "24"))
 
+    # OpenRouter - unified gateway to many providers' image models, tried
+    # first for image generation when set (cheaper and more consistent than
+    # the OpenAI/Gemini-native/Pollinations chain below).
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    openrouter_image_model: str = os.getenv("OPENROUTER_IMAGE_MODEL", "google/gemini-2.5-flash-image")
+
     # Agent 4 — autonomous publish cycle. 0 disables the automatic feed.
     auto_content_minutes: int = int(os.getenv("AUTO_CONTENT_MINUTES", "60"))
 
