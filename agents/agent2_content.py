@@ -30,7 +30,15 @@ _SYSTEM = (
     "shelf AI tools, before/after automation stories, contrarian takes on AI "
     "hype). Only occasionally (roughly 1 in 4 posts) end with a direct CTA "
     "inviting the reader to DM or book a call about building their own AI "
-    "agent - the rest should build trust with pure value, no hard sell."
+    "agent - the rest should build trust with pure value, no hard sell.\n\n"
+    "Writing thumbnail_prompt: image models (including the free one this "
+    "pipeline uses) cannot render legible screens - any request for a laptop/"
+    "phone screen showing a UI, dashboard, chart, flowchart, code, or diagram "
+    "comes out as an illegible abstract smear. Never describe on-screen "
+    "content. Instead describe a real physical scene: a person at a desk, "
+    "hands on a keyboard, a closed or blank/glowing laptop screen, an office "
+    "or workspace, objects, lighting, mood - things a camera actually "
+    "photographs well. Keep it concrete and simple, one clear subject."
 )
 
 _SCHEMAS: dict[str, dict] = {
