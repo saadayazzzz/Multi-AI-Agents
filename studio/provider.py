@@ -115,6 +115,19 @@ def _comfy_clip(prompt: str, seconds: int) -> tuple[bytes, bytes | None]:
         )
     wf = json.loads(Path(wf_path).read_text(encoding="utf-8"))
 
+    # The model's own fps (from its CreateVideo/Save Video node) determines
+    # how many latent frames "seconds" actually needs - without this the
+    # workflow's exported default `length` (whatever it happened to be when
+    # saved) silently overrides every request, e.g. always ~2s clips no
+    # matter what `seconds` the caller asked for.
+    fps = 16
+    for node in wf.values():
+        if isinstance(node, dict) and node.get("class_type") in ("CreateVideo", "SaveVideo"):
+            f = node.get("inputs", {}).get("fps")
+            if isinstance(f, (int, float)) and f > 0:
+                fps = f
+                break
+
     injected = False
     for node in wf.values():
         if not isinstance(node, dict):
@@ -130,6 +143,10 @@ def _comfy_clip(prompt: str, seconds: int) -> tuple[bytes, bytes | None]:
         for k in ("seed", "noise_seed"):
             if isinstance(ins.get(k), (int, float)):
                 ins[k] = random.randint(1, 2**31 - 1)
+        if "length" in ins and "width" in ins and "height" in ins:
+            # Wan/Hunyuan latent-video nodes require length = 4n+1.
+            n = max(0, round((seconds * fps - 1) / 4))
+            ins["length"] = 4 * n + 1
     if not injected:
         for node in wf.values():
             if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode":
