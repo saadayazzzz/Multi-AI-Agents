@@ -12,6 +12,7 @@ from db.database import get_conn
 from studio import thumbnail, youtube
 
 from ads import assemble as assemble_mod
+from ads import avatar as avatar_mod
 from ads import captions, voice
 from ads.script import script
 
@@ -29,9 +30,16 @@ def make_ugc_ad(
     product: str | None = None,
     seconds: int = 30,
     upload: bool = False,
+    avatar: bool = False,
 ) -> dict[str, Any]:
     privacy = os.getenv("YT_PRIVACY", "unlisted")
-    report(f"ads: '{niche}'" + (f" / {product}" if product else "") + f" — target {seconds}s (privacy: {privacy})")
+    mode = "talking avatar" if avatar else "faceless B-roll"
+    report(f"ads: '{niche}'" + (f" / {product}" if product else "") + f" — target {seconds}s, {mode} (privacy: {privacy})")
+
+    if avatar and not avatar_mod.available():
+        raise RuntimeError(
+            "avatar=true needs the SadTalker workflow in ComfyUI - see studio/README_comfy.md"
+        )
 
     sc = script(niche, product=product, seconds=seconds)
     with get_conn() as conn:
@@ -50,19 +58,30 @@ def make_ugc_ad(
         report("  writing voiceover")
         audio, words = voice.synthesize(sc["script"])
 
-        report(f"  generating {len(sc['visual_prompts'])} B-roll shots")
-        images: list[bytes] = []
-        for i, prompt in enumerate(sc["visual_prompts"], 1):
-            report(f"    shot {i}/{len(sc['visual_prompts'])}: {prompt[:70]}")
-            images.append(generate_image(prompt, size=_SHOT_SIZE))
-
         srt_path = None
         if words:
             srt_path = str(work / "captions.srt")
             captions.write_srt(words, srt_path)
 
         final = str(work / "final.mp4")
-        assemble_mod.assemble(images, audio, srt_path, final)
+        if avatar:
+            report("  generating presenter avatar")
+            face_prompt = (
+                f"Professional headshot of a friendly person facing the camera directly for a "
+                f"{niche} ad, neutral expression, mouth closed, plain studio background, soft "
+                "even lighting, photorealistic, shoulders visible"
+            )
+            face = generate_image(face_prompt, size="1024x1024")
+            report("  animating talking head (SadTalker, local)")
+            talking_head = avatar_mod.generate_talking_head(face, audio)
+            assemble_mod.assemble_avatar(talking_head, srt_path, final)
+        else:
+            report(f"  generating {len(sc['visual_prompts'])} B-roll shots")
+            images: list[bytes] = []
+            for i, prompt in enumerate(sc["visual_prompts"], 1):
+                report(f"    shot {i}/{len(sc['visual_prompts'])}: {prompt[:70]}")
+                images.append(generate_image(prompt, size=_SHOT_SIZE))
+            assemble_mod.assemble(images, audio, srt_path, final)
 
         thumb = str(work / "thumb.jpg")
         thumbnail.frame_thumb(final, thumb)

@@ -200,17 +200,20 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "make_ugc_ad",
-        "description": "Run Agent 9 (Ad Studio): make a faceless AI UGC-style ad for a "
-        "niche/product — AI script (hook/body/CTA), AI voiceover, B-roll images/clips, "
-        "and burned-in captions, vertical 9:16. Set upload=true to publish it to YouTube "
-        "Shorts (UNLISTED, with an AI-content disclosure). Use for 'make an ad for X', "
-        "'create a UGC ad', 'make a faceless ad about <niche>'.",
+        "description": "Run Agent 9 (Ad Studio): make an AI UGC-style ad for a niche/product — "
+        "AI script (hook/body/CTA), AI voiceover, and burned-in captions, vertical 9:16. "
+        "Default is faceless (B-roll images/clips). Set avatar=true for a talking AI presenter "
+        "(local lip-synced avatar) instead of B-roll — use when the user asks for a 'talking "
+        "avatar', 'a person talking', 'UGC with a face/presenter'. Set upload=true to publish "
+        "it to YouTube Shorts (UNLISTED, with an AI-content disclosure). Use for 'make an ad "
+        "for X', 'create a UGC ad', 'make a faceless ad about <niche>'.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "niche": {"type": "string", "description": "e.g. 'skincare', 'healthcare scheduling software'"},
                 "product": {"type": "string", "description": "specific product/offer, if any"},
                 "seconds": {"type": "integer", "description": "target length in seconds (default 30)"},
+                "avatar": {"type": "boolean", "description": "talking AI presenter instead of faceless B-roll"},
                 "upload": {"type": "boolean"},
             },
             "required": ["niche"],
@@ -331,6 +334,7 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
                 args["niche"],
                 product=args.get("product"),
                 seconds=int(args.get("seconds") or 30),
+                avatar=bool(args.get("avatar")),
                 upload=bool(args.get("upload")),
             )
             if r.get("url"):

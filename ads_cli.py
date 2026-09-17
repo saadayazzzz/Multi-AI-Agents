@@ -3,6 +3,7 @@
     python ads_cli.py initdb
     python ads_cli.py make "skincare" --product "vitamin C serum" --seconds 30
     python ads_cli.py make "healthcare scheduling software" --upload
+    python ads_cli.py make "fitness coaching" --avatar   # talking AI presenter (needs ComfyUI SadTalker)
     python ads_cli.py list
 
 Needs ffmpeg on PATH. Voiceover is free (edge-tts, no key). B-roll images use
@@ -38,6 +39,7 @@ def main() -> None:
     m.add_argument("niche")
     m.add_argument("--product", help="specific product/offer, if any")
     m.add_argument("--seconds", type=int, default=30, help="target length in seconds")
+    m.add_argument("--avatar", action="store_true", help="talking AI presenter instead of faceless B-roll")
     m.add_argument("--upload", action="store_true")
 
     sub.add_parser("list")
@@ -50,7 +52,10 @@ def main() -> None:
     if args.cmd == "initdb":
         return
     if args.cmd == "make":
-        r = make_ugc_ad(args.niche, product=args.product, seconds=args.seconds, upload=args.upload)
+        r = make_ugc_ad(
+            args.niche, product=args.product, seconds=args.seconds,
+            avatar=args.avatar, upload=args.upload,
+        )
         print("\n" + "\n".join(f"  {k}: {v}" for k, v in r.items()))
     elif args.cmd == "list":
         from db.database import get_conn

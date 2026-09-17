@@ -78,7 +78,14 @@ def assemble(
         "-shortest", str(muxed),
     ])
 
-    final_args = ["ffmpeg", "-y", "-i", str(muxed)]
+    _burn_captions(str(muxed), srt_path, out_path, copy_video_if_no_captions=True)
+    return out_path
+
+
+def _burn_captions(
+    in_path: str, srt_path: str | None, out_path: str, *, copy_video_if_no_captions: bool
+) -> None:
+    args = ["ffmpeg", "-y", "-i", in_path]
     if srt_path and Path(srt_path).exists():
         # ffmpeg's filter-graph parser treats ':' and '\' specially, so the
         # subtitles filter needs the path escaped even on Windows drive paths.
@@ -89,9 +96,39 @@ def assemble(
             "OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,"
             "Alignment=2,MarginV=140'"
         )
-        final_args += ["-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+        args += ["-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+    elif copy_video_if_no_captions:
+        args += ["-c:v", "copy"]
     else:
-        final_args += ["-c:v", "copy"]
-    final_args += ["-c:a", "copy", "-movflags", "+faststart", out_path]
-    _run(final_args)
+        args += ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+    args += ["-c:a", "copy", "-movflags", "+faststart", out_path]
+    _run(args)
+
+
+def assemble_avatar(talking_head_mp4: bytes, srt_path: str | None, out_path: str) -> str:
+    """Fit a square/near-square talking-head clip (audio already baked in by
+    the animator) into the 9:16 frame - a blurred, scaled copy of itself
+    fills the background, the sharp original sits centered on top - then
+    burn captions. Matches the visual language of assemble()'s B-roll ads.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="ads_avatar_"))
+    src = tmp / "head.mp4"
+    src.write_bytes(talking_head_mp4)
+
+    fitted = tmp / "fitted.mp4"
+    filter_complex = (
+        f"[0:v]scale={_W}:{_H}:force_original_aspect_ratio=increase,"
+        f"crop={_W}:{_H},gblur=sigma=25[bg];"
+        f"[0:v]scale={_W}:-2[fg];"
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[v]"
+    )
+    _run([
+        "ffmpeg", "-y", "-i", str(src),
+        "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-filter:a", "loudnorm=I=-16:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k",
+        str(fitted),
+    ])
+
+    _burn_captions(str(fitted), srt_path, out_path, copy_video_if_no_captions=False)
     return out_path
