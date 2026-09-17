@@ -90,12 +90,18 @@ def _burn_captions(
         # ffmpeg's filter-graph parser treats ':' and '\' specially, so the
         # subtitles filter needs the path escaped even on Windows drive paths.
         escaped = Path(srt_path).as_posix().replace(":", "\\:")
-        vf = (
-            f"subtitles='{escaped}':force_style="
-            "'FontName=Arial Black,FontSize=17,PrimaryColour=&H00FFFFFF,"
-            "OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,"
-            "Alignment=2,MarginV=140'"
-        )
+        if Path(srt_path).suffix.lower() == ".ass":
+            # .ass carries its own [V4+ Styles] + per-line pop animation
+            # (ads/captions.py) - force_style would stomp on both, so leave
+            # it out and let the file's own styling render as authored.
+            vf = f"subtitles='{escaped}'"
+        else:
+            vf = (
+                f"subtitles='{escaped}':force_style="
+                "'FontName=Arial Black,FontSize=17,PrimaryColour=&H00FFFFFF,"
+                "OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,"
+                "Alignment=2,MarginV=140'"
+            )
         args += ["-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20"]
     elif copy_video_if_no_captions:
         args += ["-c:v", "copy"]

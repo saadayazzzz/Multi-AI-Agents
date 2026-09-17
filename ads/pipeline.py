@@ -60,8 +60,8 @@ def make_ugc_ad(
 
         srt_path = None
         if words:
-            srt_path = str(work / "captions.srt")
-            captions.write_srt(words, srt_path)
+            srt_path = str(work / "captions.ass")
+            captions.write_ass(words, srt_path)
 
         final = str(work / "final.mp4")
         if avatar:
