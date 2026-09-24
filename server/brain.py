@@ -1,4 +1,4 @@
-"""JARVIS orchestrator.
+"""AUREN orchestrator.
 
 A Claude tool-use loop that reads one natural-language task, decides which of the
 three agents to run (chaining them for multi-step requests), and returns a short
@@ -19,7 +19,8 @@ from db import get_conn
 Emit = Callable[[str, str, str, dict], None]  # (actor, kind, message, data)
 
 _SYSTEM = """\
-You are JARVIS, the orchestrator of a four-agent beauty-commerce team:
+You are AUREN (Autonomous UGC, Revenue & Engagement Nexus), the orchestrator of a
+four-agent beauty-commerce team:
   - Agent 1 discovers high-quality skincare / cosmetics websites.
   - Agent 2 scrapes product and brand data from those sites into a database.
   - Agent 3 designs a brand-new ORIGINAL brand from that data and generates a

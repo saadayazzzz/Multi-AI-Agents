@@ -3,7 +3,7 @@
 import type { AgentState } from "@/lib/api";
 
 const NAMES: Record<string, [string, string]> = {
-  orchestrator: ["JARVIS", "Orchestrator"],
+  orchestrator: ["AUREN", "Orchestrator"],
   agent1: ["Agent 1", "Discovery"],
   agent2: ["Agent 2", "Scrape & Store"],
   agent3: ["Agent 3", "Brand Builder"],

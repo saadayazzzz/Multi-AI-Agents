@@ -34,7 +34,7 @@ export function OutreachPanel() {
   if (!d) {
     return (
       <div className="px-3 py-2 font-mono text-[10px] text-jarvis/35">
-        no campaign yet — ask JARVIS to “run outreach” with an ICP and an offer
+        no campaign yet — ask AUREN to “run outreach” with an ICP and an offer
       </div>
     );
   }

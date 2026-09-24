@@ -190,7 +190,7 @@ export function JarvisCore({
           }}
         >
           <span className="holo font-mono text-[clamp(13px,3vw,24px)] font-semibold tracking-[0.36em] text-white/90">
-            JARVIS
+            AUREN
           </span>
         </div>
       </div>

@@ -32,7 +32,7 @@ export function StudioPanel() {
       <div className="label">Video Studio</div>
       {rows.length === 0 ? (
         <div className="mt-2 font-mono text-[10px] text-jarvis/35">
-          no videos yet — ask JARVIS to “make a soap-cutting ASMR video”
+          no videos yet — ask AUREN to “make a soap-cutting ASMR video”
         </div>
       ) : (
         <div className="mt-2 space-y-1.5 font-mono text-[9px]">

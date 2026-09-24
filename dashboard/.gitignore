@@ -2,3 +2,6 @@ node_modules/
 .next/
 next-env.d.ts
 .env.local
+
+# Cesium runtime assets — copied out of node_modules by `npm run cesium:assets`
+public/cesium/

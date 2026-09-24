@@ -1,7 +1,7 @@
 """Autonomous worker.
 
 Runs as its own process. Claims queued tasks from Postgres one at a time, hands
-each to the JARVIS orchestrator, streams progress into `task_events`, and
+each to the AUREN orchestrator, streams progress into `task_events`, and
 re-enqueues recurring tasks. Keeps running whether or not the console is open.
 
     python -m server.worker

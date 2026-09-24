@@ -29,8 +29,7 @@ export function CommandBar({
 
   return (
     <div
-      className="hud-panel pointer-events-auto flex w-[min(92vw,640px)] items-center gap-3 px-3 py-2.5"
-      style={{ boxShadow: "0 0 60px -18px rgba(56,224,208,0.55)" }}
+      className="hud-panel pointer-events-auto flex w-[min(92vw,600px)] items-center gap-3 px-3 py-2"
     >
       <span className="hud-corner tl" />
       <span className="hud-corner tr" />
@@ -60,10 +59,10 @@ export function CommandBar({
         readOnly={listening || disabled}
         placeholder={
           disabled
-            ? "JARVIS is powered down — press ⏻ to bring it back online"
-            : "Ask JARVIS…  “find fresh sites, scrape them, rebuild the store with images”"
+            ? "AUREN is powered down — press ⏻ to bring it back online"
+            : "Ask AUREN…  “show me today's best leads”"
         }
-        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-jarvis outline-none placeholder:text-jarvis/30 disabled:opacity-40"
+        className="min-w-0 flex-1 bg-transparent font-mono text-[14px] text-jarvis-soft outline-none placeholder:text-jarvis/35 disabled:opacity-40"
         disabled={disabled}
       />
 

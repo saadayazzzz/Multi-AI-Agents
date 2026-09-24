@@ -12,6 +12,7 @@ import {
 
 const MAX_EVENTS = 400;
 const MAX_MARKET = 60;
+const SPEAK_WINDOW_MS = 30000;
 
 export type JarvisFeed = {
   connected: boolean;
@@ -91,11 +92,14 @@ export function useJarvis(): JarvisFeed {
         return next;
       });
 
+      // history replayed on connect is shown, never read aloud again
+      const cutoff = Date.now() - SPEAK_WINDOW_MS;
       for (const e of fresh) {
         if (
           (e.kind === "message" || e.kind === "spoken") &&
           (e.actor === "orchestrator" || e.actor === "system") &&
-          e.message
+          e.message &&
+          new Date(e.ts).getTime() >= cutoff
         ) {
           setLatestSpoken({ id: e.id, text: e.message });
         }

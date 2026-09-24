@@ -1,4 +1,4 @@
-"""FastAPI control plane for the JARVIS console.
+"""FastAPI control plane for the AUREN console.
 
 The browser talks only to this API. This API talks only to Postgres. The worker
 (server/worker.py) is a separate process that also talks only to Postgres, so
@@ -21,7 +21,7 @@ from config import settings
 from db import get_conn, init_db
 from db.database import wait_for_db
 
-app = FastAPI(title="JARVIS control plane")
+app = FastAPI(title="AUREN control plane")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -164,10 +164,15 @@ def _events_after(cursor: int, limit: int = 300) -> list[dict[str, Any]]:
     return [_iso(r) for r in rows]
 
 
-def _max_event_id() -> int:
+def _history_cursor(n: int = 40) -> int:
+    """Cursor just before the last `n` events, so a new console opens with recent history."""
     with get_conn() as conn:
-        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM task_events").fetchone()
-    return row["m"]
+        row = conn.execute(
+            "SELECT COALESCE(MIN(id), 1) - 1 c FROM "
+            "(SELECT id FROM task_events ORDER BY id DESC LIMIT %s) t",
+            (n,),
+        ).fetchone()
+    return row["c"]
 
 
 _MARKET_COLS = "id, headline, detail, tag, sentiment, region, source, ts"
@@ -329,7 +334,7 @@ async def studio_recent() -> list[dict[str, Any]]:
 @app.post("/api/tasks", status_code=201)
 async def create_task(body: TaskIn) -> dict[str, Any]:
     if await run_in_threadpool(_power) == "off":
-        raise HTTPException(409, "JARVIS is powered down")
+        raise HTTPException(409, "AUREN is powered down")
     return await run_in_threadpool(_create_task, body.prompt.strip(), body.source)
 
 
@@ -358,7 +363,7 @@ async def brands() -> list[dict[str, Any]]:
 @app.websocket("/ws")
 async def ws(sock: WebSocket) -> None:
     await sock.accept()
-    cursor = await run_in_threadpool(_max_event_id)
+    cursor = await run_in_threadpool(_history_cursor)
     mkt_cursor = 0
     tick = 0
     try:

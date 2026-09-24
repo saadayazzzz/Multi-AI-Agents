@@ -1,7 +1,7 @@
 """Pluggable progress reporting.
 
 By default the agents print to stdout. The worker swaps in a reporter that
-persists every line as a `task_events` row so the JARVIS console can stream it.
+persists every line as a `task_events` row so the AUREN console can stream it.
 """
 from __future__ import annotations
 

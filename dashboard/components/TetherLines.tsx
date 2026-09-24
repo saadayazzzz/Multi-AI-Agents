@@ -1,20 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Corner } from "./HudPanel";
+import { DOCK_BOTTOM, DOCK_TOP, PANEL_INNER_EDGE, panelHeight, type Corner } from "./HudPanel";
+import { coreRadiusPx } from "./HoloCore";
 
 const CORNERS: Corner[] = ["tl", "tr", "bl", "br"];
 
-// keep in sync with HudPanel: w-[21rem], top-16 (64px), inset-4 (16px), h-[42vh]
-const PANEL_W = 21 * 16;
-const PAD = 16;
-const TOP = 64;
-
-/**
- * Connector beams that leave the RIM of the core (not its centre) and run out to
- * the inner corner of each panel. Geometry is measured from the viewport so the
- * start point sits exactly on the core's outer ring.
- */
+/** Energy beams from the reactor rim to the inner edge of each open panel. */
 export function TetherLines({ shown }: { shown: Corner[] }) {
   const [d, setD] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -29,15 +21,14 @@ export function TetherLines({ shown }: { shown: Corner[] }) {
 
   const cx = w / 2;
   const cy = h / 2;
-  const coreSize = Math.min(w * 0.78, h * 0.6, 560);
-  const rim = (coreSize * 0.9) / 2; // ≈ outer tick-ring radius of the core
-  const panelH = h * 0.42;
+  const rim = coreRadiusPx(w, h) * 1.02;
+  const ph = panelHeight(h);
 
   const target: Record<Corner, [number, number]> = {
-    tl: [PAD + PANEL_W, TOP + panelH],
-    tr: [w - PAD - PANEL_W, TOP + panelH],
-    bl: [PAD + PANEL_W, h - PAD - panelH],
-    br: [w - PAD - PANEL_W, h - PAD - panelH],
+    tl: [PANEL_INNER_EDGE, DOCK_TOP + ph / 2],
+    tr: [w - PANEL_INNER_EDGE, DOCK_TOP + ph / 2],
+    bl: [PANEL_INNER_EDGE, h - DOCK_BOTTOM - ph / 2],
+    br: [w - PANEL_INNER_EDGE, h - DOCK_BOTTOM - ph / 2],
   };
 
   return (
@@ -45,26 +36,24 @@ export function TetherLines({ shown }: { shown: Corner[] }) {
       width={w}
       height={h}
       className="pointer-events-none absolute inset-0 z-[5]"
-      style={{ filter: "drop-shadow(0 0 6px rgba(56,224,208,0.5))" }}
+      style={{ filter: "drop-shadow(0 0 3px rgba(90,216,255,0.75))" }}
     >
       <defs>
         {CORNERS.map((c) => {
           const [tx, ty] = target[c];
           const ang = Math.atan2(ty - cy, tx - cx);
-          const sx = cx + Math.cos(ang) * rim;
-          const sy = cy + Math.sin(ang) * rim;
           return (
             <linearGradient
               key={c}
               id={`beam-${c}`}
               gradientUnits="userSpaceOnUse"
-              x1={sx}
-              y1={sy}
+              x1={cx + Math.cos(ang) * rim}
+              y1={cy + Math.sin(ang) * rim}
               x2={tx}
               y2={ty}
             >
-              <stop offset="0" stopColor="#7cf5ea" stopOpacity="0.85" />
-              <stop offset="1" stopColor="#38e0d0" stopOpacity="0.12" />
+              <stop offset="0" stopColor="#e8fbff" stopOpacity="0.9" />
+              <stop offset="1" stopColor="#5ad8ff" stopOpacity="0.25" />
             </linearGradient>
           );
         })}
@@ -78,38 +67,34 @@ export function TetherLines({ shown }: { shown: Corner[] }) {
         const len = Math.hypot(tx - sx, ty - sy);
         const on = shown.includes(c);
         return (
-          <g key={c}>
+          <g key={c} style={{ transition: "opacity 0.25s", opacity: on ? 1 : 0 }}>
             <line
               x1={sx}
               y1={sy}
               x2={tx}
               y2={ty}
               stroke={`url(#beam-${c})`}
-              strokeWidth={1.6}
+              strokeWidth={1.4}
               strokeLinecap="round"
               strokeDasharray={len}
               strokeDashoffset={on ? 0 : len}
-              style={{
-                transition: "stroke-dashoffset 0.32s ease, opacity 0.25s",
-                opacity: on ? 1 : 0,
-              }}
+              style={{ transition: "stroke-dashoffset 0.35s ease" }}
             />
-            {/* node where the beam leaves the core rim */}
-            <circle
-              cx={sx}
-              cy={sy}
-              r={2.5}
-              fill="#7cf5ea"
-              style={{ transition: "opacity 0.25s", opacity: on ? 0.9 : 0 }}
-            />
-            {/* node where it meets the panel */}
-            <circle
-              cx={tx}
-              cy={ty}
-              r={3.5}
-              fill="#38e0d0"
-              style={{ transition: "opacity 0.25s ease 0.28s", opacity: on ? 0.9 : 0 }}
-            />
+            {on && (
+              <line
+                x1={sx}
+                y1={sy}
+                x2={tx}
+                y2={ty}
+                stroke="#e8fbff"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+                strokeDasharray="6 34"
+                className="beam-pulse"
+                style={{ animationDelay: "0.4s" }}
+              />
+            )}
+            <circle cx={sx} cy={sy} r={2.6} fill="#e8fbff" />
           </g>
         );
       })}
