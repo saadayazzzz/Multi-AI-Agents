@@ -6,9 +6,10 @@ from typing import Any
 from agents.llm import json_out, research
 
 _SYS = (
-    "You are a B2B sales researcher. From public sources, identify the single best "
-    "person to contact at a company about improving the company's visibility in AI "
-    "search engines (typically Head/Director of Marketing, Growth, or SEO)."
+    "You are a B2B sales researcher. From public sources, identify the CEO or "
+    "founder of a company - the decision-maker for a custom AI agent/automation "
+    "build, since that's a strategic, budget-owning decision at most small-to-"
+    "mid companies, not something a department head signs off on alone."
 )
 
 _SCHEMA = {
@@ -41,10 +42,11 @@ def enrich_lead(lead: dict[str, Any]) -> dict[str, Any]:
         _SYS,
         f"Company: {lead['company']}  ({lead['domain']})\n"
         f"Industry: {lead.get('industry', '?')}\n\n"
-        f"Using web search: who is the best person to contact about the company's "
-        f"AI-search visibility? Give their name if you can find one, their role, a "
-        f"one-line note on what the company is currently focused on, and a refined "
-        f"why-now trigger.",
+        f"Using web search: who is the CEO or founder of this company? Give their "
+        f"name if you can find one (contact_role should literally be 'CEO' or "
+        f"'Founder' / 'Co-Founder', not a department title), a one-line note on "
+        f"what the company is currently focused on, and a refined, RECENT why-now "
+        f"trigger for why they'd want custom AI agents/automation right now.",
         max_tokens=3000,
     )
     d = json_out(_SYS, "Structure this.\n\n" + notes, _SCHEMA, max_tokens=1500)

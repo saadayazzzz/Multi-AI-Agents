@@ -13,3 +13,4 @@ uvicorn[standard]>=0.30
 openpyxl>=3.1
 huggingface_hub>=0.28
 edge-tts>=7.0
+notion-client>=3.0

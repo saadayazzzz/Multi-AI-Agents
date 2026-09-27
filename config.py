@@ -43,6 +43,17 @@ class Settings:
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_image_model: str = os.getenv("OPENROUTER_IMAGE_MODEL", "google/gemini-2.5-flash-image")
 
+    # Tavily - genuinely free web search API (1000 searches/month, no card:
+    # tavily.com). Used by research() for real, current results instead of
+    # relying on Gemini's own search grounding, which needs a billed project.
+    tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
+
+    # Notion - leads database sync (official API, no risk).
+    # notion.so/my-integrations -> create an internal integration -> share
+    # your leads database with it -> copy the integration token + database id.
+    notion_api_key: str = os.getenv("NOTION_API_KEY", "")
+    notion_database_id: str = os.getenv("NOTION_DATABASE_ID", "")
+
     # Agent 4 — autonomous publish cycle. 0 disables the automatic feed.
     auto_content_minutes: int = int(os.getenv("AUTO_CONTENT_MINUTES", "60"))
 

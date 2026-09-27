@@ -1,12 +1,20 @@
 """Find ICP-matched companies from the public web (no LinkedIn scraping)."""
 from __future__ import annotations
 
+import httpx
+
 from agents.llm import json_out, research
+from agents.reporter import report
 
 _SYS = (
-    "You are a B2B sales researcher. You build lists of real companies that match "
-    "an ideal-customer profile, using public web sources. Every company must be a "
-    "real, currently-operating business with a working website."
+    "You are a B2B sales researcher for a solo builder who creates custom AI "
+    "agents and automation systems for businesses. You build lists of real "
+    "companies led by an active, reachable CEO/founder, using public web "
+    "sources. Every company must be real, currently operating, with a working "
+    "website. Prioritise recent signals over generic fit - a company that just "
+    "raised funding, is visibly scaling, posted about a hiring/ops crunch, or "
+    "is still running everything manually is a far better lead than one that "
+    "merely matches the industry description."
 )
 
 _SCHEMA = {
@@ -36,29 +44,64 @@ _SCHEMA = {
 }
 
 
+def _domain_is_real(domain: str) -> bool:
+    """A cheap but critical trust check: the LLM can and does invent
+    plausible-sounding companies/domains even when given real search
+    results - never let a fabricated company reach a sales pipeline."""
+    for scheme in ("https://", "http://"):
+        try:
+            r = httpx.head(
+                f"{scheme}{domain}", timeout=8, follow_redirects=True,
+            )
+            if r.status_code < 500:
+                return True
+        except Exception:  # noqa: BLE001 - try the next scheme
+            continue
+    return False
+
+
 def find_leads(icp: str, n: int = 10, exclude: set[str] | None = None) -> list[dict]:
     exclude = exclude or set()
+    # Extra headroom - the domain-reality check below drops a meaningful
+    # fraction of what the model returns, since it invents plausible-sounding
+    # companies even when grounded in real search results.
+    ask_n = n + 10
     notes = research(
         _SYS,
-        f"Ideal customer profile:\n{icp}\n\n"
-        f"Using web search, find about {n + 6} real companies that fit. For each: "
-        f"name, bare website domain, industry, a 0-100 fit score, and ONE concrete "
-        f"why-now trigger to contact them about their visibility in AI search "
-        f"(e.g. recently raised funding, hiring an SEO/growth lead, launched a new "
-        f"product, competitor getting more AI-answer coverage).",
+        f"Using web search, find real, currently-operating companies matching "
+        f"this profile: {icp}\n\n"
+        f"Search for and report on {ask_n} SPECIFIC, NAMED real companies (not a "
+        f"generic listicle page) - recently-funded startups, companies in news "
+        f"articles about scaling/hiring, or similar concrete sources. For each "
+        f"one you find in the actual search results, note: name, bare website "
+        f"domain, industry, a 0-100 fit score, and ONE concrete, RECENT why-now "
+        f"trigger for needing custom AI agents/automation (e.g. just raised "
+        f"funding, scaling fast and understaffed on ops, founder posted about "
+        f"manual/repetitive work, hiring for roles AI agents could replace). Do "
+        f"not invent companies that aren't in the search results.",
         max_tokens=6000,
     )
     data = json_out(
         _SYS,
-        "Turn this into structured records. Drop anything without a real domain.\n\n" + notes,
+        "Extract ONLY companies that are explicitly named in the notes below - "
+        "do not invent or infer any company not literally mentioned there. Drop "
+        "anything without a real domain.\n\n" + notes,
         _SCHEMA,
         max_tokens=6000,
     )
     out: list[dict] = []
+    dropped = 0
     for c in data["companies"]:
         dom = c["domain"].lower().strip().replace("https://", "").replace("http://", "")
         dom = dom.replace("www.", "").strip("/")
         if not dom or dom in exclude or dom in {o["domain"] for o in out}:
             continue
+        if not _domain_is_real(dom):
+            dropped += 1
+            continue
         out.append({**c, "domain": dom})
+        if len(out) >= n:
+            break
+    if dropped:
+        report(f"  dropped {dropped} unverifiable/fabricated companies", kind="status")
     return out[:n]

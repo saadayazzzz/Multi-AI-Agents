@@ -37,10 +37,15 @@ way a real assistant would). You orchestrate several specialist agents:
     developments into the live feed.
   - Agent 6 (AI Search Visibility) checks whether a brand shows up in AI answer
     engines for its buyers' questions, versus competitors, and scores it 0-100.
-  - Agent 7 (Outbound Sales) prospects ICP-matched companies, finds the
-    decision-maker, runs Agent 6 on each prospect's own brand, drafts a
-    personalised cold-email sequence built around that visibility finding,
-    tracks the pipeline, and exports to leads.xlsx.
+  - Agent 7 (Outbound Sales) prospects companies led by an active, reachable
+    CEO/founder showing a recent signal they need custom AI agents/
+    automation (real web search, domain-verified - LinkedIn's own search API
+    no longer works for this, it was tried and confirmed broken), finds that
+    CEO/founder as the contact, runs Agent 6 on their brand as a secondary
+    credibility point, drafts a personalised cold-email sequence AND a short
+    LinkedIn message (for the user to send manually - no automated way to
+    find/message this person on LinkedIn), tracks the pipeline, mirrors every
+    lead into the user's Notion database, and exports to leads.xlsx.
   - Agent 8 (Video Studio) makes short AI "objects cutting" ASMR videos from a
     theme (generate clips -> assemble -> thumbnail -> metadata) and, on
     request, uploads them to YouTube as UNLISTED with an AI-content
@@ -160,12 +165,19 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "run_outreach",
-        "description": "Run Agent 7 (outbound sales): prospect ICP-matched companies, "
-        "find the decision-maker, run the AI-visibility tool on each prospect, draft a "
-        "personalised cold-email sequence, track the pipeline and export to leads.xlsx. "
-        "Reuses the last campaign if one exists; otherwise needs `icp` and `offer`. Set "
-        "send=true to also email them (requires SMTP configured). Use for 'find me "
-        "clients', 'do outreach', 'run a sales cycle'.",
+        "description": "Run Agent 7 (outbound sales): prospect companies led by an "
+        "active CEO/founder with a recent signal they need custom AI agents/"
+        "automation (real web search, domain-verified), find that CEO/founder as "
+        "the contact, run the AI-visibility tool as a secondary credibility point, "
+        "draft a personalised cold-email sequence AND a short LinkedIn message "
+        "(for the user to send manually - there's no working automated way to "
+        "find/message people on LinkedIn), track the pipeline, mirror every lead "
+        "into the user's Notion database (needs NOTION_API_KEY/NOTION_DATABASE_ID "
+        "configured), and export to leads.xlsx. Reuses the last campaign if one "
+        "exists; otherwise has a sensible default icp/offer for this niche if the "
+        "user doesn't specify one. Set send=true to also email them (requires "
+        "SMTP configured). Use for 'find me clients', 'do outreach', 'run a sales "
+        "cycle', 'find leads and put them in Notion'.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -281,6 +293,25 @@ def _status_text() -> str:
     return f"Unused trends: {t}. Content by status: {c}. Posted: {p}."
 
 
+def _default_icp_offer(args: dict[str, Any]) -> tuple[str, str]:
+    icp = args.get("icp") or (
+        "Small-to-mid businesses (10-200 employees) led by an active, "
+        "reachable CEO/founder, showing a recent signal they'd benefit "
+        "from custom AI agents/automation - just raised funding, "
+        "scaling fast and understaffed on ops, founder publicly "
+        "complaining about repetitive manual work, or hiring for roles "
+        "AI agents could largely replace."
+    )
+    offer = args.get("offer") or (
+        "I design and build custom AI agents/automation systems for "
+        "businesses - not off-the-shelf SaaS, a system built around "
+        "their exact workflow (e.g. an agent that reads incoming "
+        "invoices/leads/support tickets, does the manual triage work, "
+        "and pushes clean results into their existing tools)."
+    )
+    return icp, offer
+
+
 def _run_tool(name: str, args: dict[str, Any]) -> str:
     if name in _ACTOR_FOR:
         set_actor(_ACTOR_FOR[name])
@@ -357,11 +388,8 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
                     "SELECT id FROM campaigns ORDER BY id DESC LIMIT 1"
                 ).fetchone()
             if not camp:
-                if not (args.get("icp") and args.get("offer")):
-                    return "Need an ICP and an offer to start the first campaign."
-                cid = create_campaign(
-                    "jarvis", args["icp"], args["offer"], "Saad", None, 20
-                )
+                icp, offer = _default_icp_offer(args)
+                cid = create_campaign("jarvis", icp, offer, "Saad", None, 20)
             else:
                 cid = camp["id"]
             n = max(2, min(int(args.get("prospect") or 4), 12))

@@ -28,6 +28,37 @@ def parse_file_blocks(text: str) -> dict[str, str]:
     return {m.group("path").strip(): m.group("body") for m in _FILE_RE.finditer(text)}
 
 
+def _tavily_search(query: str, max_results: int = 6) -> str | None:
+    """Real, current web search results as a text block, or None if Tavily
+    isn't configured/reachable - callers should fall back to their own
+    provider's search (if any) or plain model knowledge in that case."""
+    if not settings.tavily_api_key:
+        return None
+    try:
+        import httpx
+
+        r = httpx.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": settings.tavily_api_key,
+                "query": query[:400],
+                "search_depth": "basic",
+                "max_results": max_results,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        if not results:
+            return None
+        return "\n".join(
+            f"- {it.get('title', '')}: {it.get('content', '')} (source: {it.get('url', '')})"
+            for it in results
+        )
+    except Exception:
+        return None
+
+
 # execute(name, args) -> (output_text, is_error)
 ExecuteFn = Callable[[str, dict], tuple[str, bool]]
 # emit(actor, kind, message, data) -> None
@@ -442,6 +473,22 @@ class _Gemini:
 
     def research(self, system: str, user: str, max_tokens: int, max_rounds: int) -> str:
         t = self._types
+
+        search_ctx = _tavily_search(user)
+        if search_ctx:
+            resp = self.c.models.generate_content(
+                model=self.model,
+                contents=(
+                    f"{user}\n\nLIVE WEB SEARCH RESULTS (use these - they are real and "
+                    f"current; cite sources where it matters):\n{search_ctx}"
+                ),
+                config=t.GenerateContentConfig(
+                    system_instruction=system,
+                    max_output_tokens=min(max_tokens, self.max_output),
+                ),
+            )
+            return resp.text
+
         try:
             resp = self.c.models.generate_content(
                 model=self.model,

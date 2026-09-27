@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS leads (
     contact_role    TEXT,
     contact_email   TEXT,
     email_status    TEXT NOT NULL DEFAULT 'unknown',  -- unknown | guessed | verified | bounced
+    linkedin_url    TEXT,
+    linkedin_urn    TEXT,
+    notion_page_id  TEXT,
     industry        TEXT,
     icp_fit         INT,                              -- 0-100
     trigger         TEXT,                             -- why-now hook
@@ -34,6 +37,10 @@ CREATE TABLE IF NOT EXISTS leads (
     UNIQUE (campaign_id, domain)
 );
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (campaign_id, status);
+-- Additive migration for tables created before these columns existed.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_urn TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
 
 CREATE TABLE IF NOT EXISTS messages (
     id         BIGSERIAL PRIMARY KEY,

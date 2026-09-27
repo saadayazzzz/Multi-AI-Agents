@@ -53,6 +53,18 @@ for _kind in ("ads", "videos"):
 def _startup() -> None:
     wait_for_db()
     init_db()
+    # These are otherwise only created lazily on first use of each agent's
+    # tools - but the dashboard polls their "latest" endpoints on load
+    # regardless, so make sure the tables exist from the start.
+    from geo.db import init_geo_db
+    from outreach.db import init_outreach_db
+    from studio.db import init_studio_db
+    from ads.db import init_ads_db
+
+    init_geo_db()
+    init_outreach_db()
+    init_studio_db()
+    init_ads_db()
 
 
 # --------------------------------------------------------------------------- #
