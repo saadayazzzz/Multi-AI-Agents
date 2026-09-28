@@ -79,11 +79,19 @@ export function JarvisCore({
         </>
       )}
 
-      <svg
-        viewBox="0 0 420 420"
-        className="absolute inset-0 h-full w-full"
-        style={{ filter: `drop-shadow(0 0 18px ${p}) drop-shadow(0 0 40px ${p}55)` }}
-      >
+      {/* ambient glow — a static blurred layer behind the rings, so the GPU never
+          has to re-filter the rotating SVG groups on every frame (an SVG/CSS
+          filter forces a repaint of its whole subtree each time any descendant's
+          transform changes, which is exactly what tanks FPS here) */}
+      <div
+        className="pointer-events-none absolute inset-[6%] rounded-full opacity-70"
+        style={{
+          background: `radial-gradient(circle, ${p}55 0%, ${p}22 45%, transparent 72%)`,
+          filter: "blur(18px)",
+        }}
+      />
+
+      <svg viewBox="0 0 420 420" className="absolute inset-0 h-full w-full">
         {/* ---- outer detail ring ---- */}
         <circle cx={C} cy={C} r="200" fill="none" stroke={p} strokeOpacity="0.1" />
         <g stroke={p} strokeOpacity="0.45">
@@ -104,7 +112,6 @@ export function JarvisCore({
             stroke={a}
             strokeWidth="3.4"
             strokeLinecap="round"
-            style={{ filter: `drop-shadow(0 0 8px ${a})` }}
           />
           <circle cx={pt(-58, 176)[0]} cy={pt(-58, 176)[1]} r="3.4" fill={a} />
         </g>

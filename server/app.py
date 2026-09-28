@@ -13,17 +13,16 @@ import json
 from decimal import Decimal
 from typing import Any
 
-from pathlib import Path
-
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from config import settings
 from db import get_conn, init_db
 from db.database import wait_for_db
+from server import linkedin_oauth
 
 app = FastAPI(title="JARVIS control plane")
 app.add_middleware(
@@ -33,38 +32,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ACTORS = ["orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5",
-           "geo", "sales", "studio", "ads"]
-
-_content_dir = Path(settings.output_dir) / "content"
-_content_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/img/content", StaticFiles(directory=str(_content_dir)), name="content-images")
-
-# Rendered videos - one subfolder per row (output/<kind>/<id>/final.mp4 etc.),
-# served so the dashboard can play them in-place instead of only linking out
-# to YouTube once uploaded.
-for _kind in ("ads", "videos"):
-    _dir = Path(settings.output_dir) / _kind
-    _dir.mkdir(parents=True, exist_ok=True)
-    app.mount(f"/media/{_kind}", StaticFiles(directory=str(_dir)), name=f"{_kind}-media")
+_ACTORS = ["orchestrator", "agent5", "geo", "sales"]
 
 
 @app.on_event("startup")
 def _startup() -> None:
     wait_for_db()
     init_db()
-    # These are otherwise only created lazily on first use of each agent's
-    # tools - but the dashboard polls their "latest" endpoints on load
-    # regardless, so make sure the tables exist from the start.
+    # Otherwise only created lazily on first use - but the dashboard polls
+    # their "latest" endpoints on load regardless, so create them up front.
     from geo.db import init_geo_db
     from outreach.db import init_outreach_db
-    from studio.db import init_studio_db
-    from ads.db import init_ads_db
 
     init_geo_db()
     init_outreach_db()
-    init_studio_db()
-    init_ads_db()
 
 
 # --------------------------------------------------------------------------- #
@@ -86,26 +67,28 @@ def _set_power(state: str) -> dict[str, str]:
 
 def _stats() -> dict[str, Any]:
     with get_conn() as conn:
-        trends = conn.execute(
-            "SELECT platform, COUNT(*) n FROM trends WHERE status='new' GROUP BY platform"
-        ).fetchall()
-        content_by_status = conn.execute(
-            "SELECT status, COUNT(*) n FROM content_pieces GROUP BY status"
-        ).fetchall()
-        content_total = conn.execute("SELECT COUNT(*) n FROM content_pieces").fetchone()["n"]
-        posted_by_platform = conn.execute(
-            "SELECT platform, COUNT(*) n FROM content_pieces WHERE status='posted' GROUP BY platform"
-        ).fetchall()
+        market_total = conn.execute("SELECT COUNT(*) n FROM market_feed").fetchone()["n"]
+        # leads_by_status is keyed by the *latest* campaign only, matching
+        # /api/outreach/latest - a brand-new console load shouldn't have to
+        # wait on that separate request to show a non-zero lead count.
+        camp = conn.execute("SELECT id FROM campaigns ORDER BY id DESC LIMIT 1").fetchone()
+        leads_by_status: dict[str, int] = {}
+        leads_total = 0
+        if camp:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) n FROM leads WHERE campaign_id = %s GROUP BY status",
+                (camp["id"],),
+            ).fetchall()
+            leads_by_status = {r["status"]: r["n"] for r in rows}
+            leads_total = sum(leads_by_status.values())
         pending = conn.execute(
             "SELECT COUNT(*) n FROM tasks WHERE status IN ('queued','running')"
         ).fetchone()["n"]
         power = conn.execute("SELECT power FROM system_state WHERE id = 1").fetchone()
     return {
-        "trends": {r["platform"]: r["n"] for r in trends},
-        "trends_total": sum(r["n"] for r in trends),
-        "content_by_status": {r["status"]: r["n"] for r in content_by_status},
-        "content_total": content_total,
-        "posted_by_platform": {r["platform"]: r["n"] for r in posted_by_platform},
+        "market_total": market_total,
+        "leads_by_status": leads_by_status,
+        "leads_total": leads_total,
         "tasks_pending": pending,
         "power": (power or {}).get("power", "on"),
     }
@@ -179,22 +162,6 @@ def _cancel_task(task_id: int) -> dict[str, Any]:
     return _iso(row)
 
 
-def _content(limit: int) -> list[dict[str, Any]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT c.id, c.platform, c.title, c.script, c.caption, c.cta,
-                   c.hashtags, c.status, c.external_url, c.error,
-                   c.created_at, c.posted_at, i.rel_path AS image_rel_path
-            FROM content_pieces c
-            LEFT JOIN content_images i ON i.content_id = c.id
-            ORDER BY c.created_at DESC LIMIT %s
-            """,
-            (limit,),
-        ).fetchall()
-    return [_iso(r) for r in rows]
-
-
 def _events_after(cursor: int, limit: int = 300) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
@@ -211,29 +178,29 @@ def _max_event_id() -> int:
     return row["m"]
 
 
-_TREND_COLS = "id, platform, topic, angle, format, score, source, created_at AS ts"
+_MARKET_COLS = "id, ts, headline, detail, tag, sentiment, region, source"
 
 
-def _trends_after(cursor: int, limit: int = 50) -> list[dict[str, Any]]:
+def _market_after(cursor: int, limit: int = 50) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
-            f"SELECT {_TREND_COLS} FROM trends WHERE id > %s ORDER BY id LIMIT %s",
+            f"SELECT {_MARKET_COLS} FROM market_feed WHERE id > %s ORDER BY id LIMIT %s",
             (cursor, limit),
         ).fetchall()
     return [_iso(r) for r in rows]
 
 
-def _recent_trends(n: int = 14) -> list[dict[str, Any]]:
+def _recent_market(n: int = 14) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
-            f"SELECT {_TREND_COLS} FROM trends ORDER BY id DESC LIMIT %s", (n,)
+            f"SELECT {_MARKET_COLS} FROM market_feed ORDER BY id DESC LIMIT %s", (n,)
         ).fetchall()
     return [_iso(r) for r in reversed(rows)]
 
 
-def _max_trend_id() -> int:
+def _max_market_id() -> int:
     with get_conn() as conn:
-        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM trends").fetchone()
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM market_feed").fetchone()
     return row["m"]
 
 
@@ -279,9 +246,48 @@ async def list_tasks(limit: int = 40) -> list[dict[str, Any]]:
     return await run_in_threadpool(_tasks, min(limit, 200))
 
 
-@app.get("/api/trends")
-async def trends(limit: int = 30) -> list[dict[str, Any]]:
-    return await run_in_threadpool(_recent_trends, min(limit, 100))
+@app.get("/api/market")
+async def market(limit: int = 30) -> list[dict[str, Any]]:
+    return await run_in_threadpool(_recent_market, min(limit, 100))
+
+
+# --------------------------------------------------------------------------- #
+# LinkedIn "Connect" (official OAuth - see server/linkedin_oauth.py)
+# --------------------------------------------------------------------------- #
+def _frontend_url() -> str:
+    first = settings.cors_origins.split(",")[0].strip()
+    return first or "http://localhost:3737"
+
+
+@app.get("/api/linkedin/status")
+async def linkedin_status() -> dict[str, Any]:
+    return await run_in_threadpool(linkedin_oauth.status)
+
+
+@app.get("/api/linkedin/login")
+async def linkedin_login() -> RedirectResponse:
+    try:
+        url = await run_in_threadpool(linkedin_oauth.authorize_url)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return RedirectResponse(url)
+
+
+@app.get("/api/linkedin/callback")
+async def linkedin_callback(code: str | None = None, state: str | None = None, error: str | None = None) -> RedirectResponse:
+    if error or not code or not state:
+        return RedirectResponse(f"{_frontend_url()}/?linkedin=error")
+    try:
+        await run_in_threadpool(linkedin_oauth.complete_callback, code, state)
+    except Exception:
+        return RedirectResponse(f"{_frontend_url()}/?linkedin=error")
+    return RedirectResponse(f"{_frontend_url()}/?linkedin=connected")
+
+
+@app.post("/api/linkedin/disconnect")
+async def linkedin_disconnect() -> dict[str, str]:
+    await run_in_threadpool(linkedin_oauth.disconnect)
+    return {"status": "disconnected"}
 
 
 def _geo_latest() -> dict[str, Any] | None:
@@ -319,7 +325,8 @@ def _outreach_latest() -> dict[str, Any] | None:
             return None
         leads = conn.execute(
             """
-            SELECT id, company, domain, contact_role, contact_email, email_status,
+            SELECT id, company, domain, contact_name, contact_role, contact_email,
+                   email_status, linkedin_url, linkedin_activity, trigger,
                    icp_fit, geo_score, geo_finding, status
             FROM leads WHERE campaign_id = %s ORDER BY id DESC LIMIT 40
             """,
@@ -354,36 +361,6 @@ async def outreach_latest() -> dict[str, Any] | None:
     return await run_in_threadpool(_outreach_latest)
 
 
-def _studio_recent(n: int = 8) -> list[dict[str, Any]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, theme, title, clip_count, seconds, privacy, status, "
-            "youtube_url, created_at FROM videos ORDER BY id DESC LIMIT %s",
-            (n,),
-        ).fetchall()
-    return [_iso(r) for r in rows]
-
-
-@app.get("/api/studio/recent")
-async def studio_recent() -> list[dict[str, Any]]:
-    return await run_in_threadpool(_studio_recent)
-
-
-def _ads_recent(n: int = 8) -> list[dict[str, Any]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, niche, product, hook, seconds, privacy, status, "
-            "youtube_url, created_at FROM ads ORDER BY id DESC LIMIT %s",
-            (n,),
-        ).fetchall()
-    return [_iso(r) for r in rows]
-
-
-@app.get("/api/ads/recent")
-async def ads_recent() -> list[dict[str, Any]]:
-    return await run_in_threadpool(_ads_recent)
-
-
 @app.post("/api/tasks", status_code=201)
 async def create_task(body: TaskIn) -> dict[str, Any]:
     if await run_in_threadpool(_power) == "off":
@@ -408,25 +385,11 @@ async def cancel_task(task_id: int) -> dict[str, Any]:
     return await run_in_threadpool(_cancel_task, task_id)
 
 
-@app.get("/api/content")
-async def content(limit: int = 40) -> list[dict[str, Any]]:
-    return await run_in_threadpool(_content, min(limit, 200))
-
-
-@app.post("/api/content/{content_id}/approve")
-async def approve_content(content_id: int) -> dict[str, Any]:
-    if await run_in_threadpool(_power) == "off":
-        raise HTTPException(409, "JARVIS is powered down")
-    from agents.agent4_publisher import publish
-
-    return await run_in_threadpool(publish, content_id)
-
-
 @app.websocket("/ws")
 async def ws(sock: WebSocket) -> None:
     await sock.accept()
     cursor = await run_in_threadpool(_max_event_id)
-    trend_cursor = 0
+    market_cursor = 0
     tick = 0
     try:
         await sock.send_text(json.dumps({
@@ -434,19 +397,19 @@ async def ws(sock: WebSocket) -> None:
             "stats": await run_in_threadpool(_stats),
             "agents": await run_in_threadpool(_agents),
             "tasks": await run_in_threadpool(_tasks, 40),
-            "trends": await run_in_threadpool(_recent_trends, 14),
+            "market": await run_in_threadpool(_recent_market, 14),
         }))
-        trend_cursor = await run_in_threadpool(_max_trend_id)
+        market_cursor = await run_in_threadpool(_max_market_id)
         while True:
             events = await run_in_threadpool(_events_after, cursor)
             if events:
                 cursor = events[-1]["id"]
                 await sock.send_text(json.dumps({"type": "events", "events": events}))
 
-            trend_items = await run_in_threadpool(_trends_after, trend_cursor)
-            if trend_items:
-                trend_cursor = trend_items[-1]["id"]
-                await sock.send_text(json.dumps({"type": "trends", "items": trend_items}))
+            market_items = await run_in_threadpool(_market_after, market_cursor)
+            if market_items:
+                market_cursor = market_items[-1]["id"]
+                await sock.send_text(json.dumps({"type": "market", "items": market_items}))
 
             tick += 1
             if tick % 4 == 0:  # ~ every 2s

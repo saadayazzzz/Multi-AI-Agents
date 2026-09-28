@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getOutreachLatest, type OutreachLatest } from "@/lib/api";
+import { LinkedInConnect } from "./LinkedInConnect";
 
 const STAGES = ["new", "enriched", "scored", "drafted", "sent", "replied", "positive"];
 const STAGE_COLOR: Record<string, string> = {
@@ -33,8 +34,11 @@ export function OutreachPanel() {
 
   if (!d) {
     return (
-      <div className="px-3 py-2 font-mono text-[10px] text-jarvis/35">
-        no campaign yet — ask JARVIS to “run outreach” with an ICP and an offer
+      <div className="space-y-3 p-3">
+        <LinkedInConnect />
+        <div className="px-1 font-mono text-[10px] text-jarvis/35">
+          no campaign yet — ask JARVIS to “run outreach” with an ICP and an offer
+        </div>
       </div>
     );
   }
@@ -43,6 +47,8 @@ export function OutreachPanel() {
 
   return (
     <div className="space-y-3 p-3">
+      <LinkedInConnect />
+
       <div className="border border-jarvis/15 bg-black/25 px-3 py-2">
         <div className="label">Pipeline · {d.total} leads</div>
         <div className="mt-2 space-y-1">
@@ -63,17 +69,39 @@ export function OutreachPanel() {
 
       <div className="border border-jarvis/15 bg-black/25 px-3 py-2">
         <div className="label">Leads</div>
-        <div className="mt-1.5 space-y-1 font-mono text-[9px]">
+        <div className="mt-1.5 space-y-2 font-mono text-[9px]">
           {d.leads.map((l) => (
-            <div key={l.id} className="flex items-center gap-2">
-              <span className={`w-14 shrink-0 uppercase ${STAGE_COLOR[l.status] ?? "text-jarvis/40"}`}>
-                {l.status}
-              </span>
-              <span className="w-8 shrink-0 text-right text-jarvis/45">
-                {l.geo_score != null ? Number(l.geo_score).toFixed(0) : "-"}
-              </span>
-              <span className="w-32 shrink-0 truncate text-jarvis-soft">{l.company}</span>
-              <span className="truncate text-jarvis/40">{l.contact_email}</span>
+            <div key={l.id}>
+              <div className="flex items-center gap-2">
+                <span className={`w-14 shrink-0 uppercase ${STAGE_COLOR[l.status] ?? "text-jarvis/40"}`}>
+                  {l.status}
+                </span>
+                <span className="w-8 shrink-0 text-right text-jarvis/45">
+                  {l.geo_score != null ? Number(l.geo_score).toFixed(0) : "-"}
+                </span>
+                <span className="w-32 shrink-0 truncate text-jarvis-soft">{l.company}</span>
+                <span className="truncate text-jarvis/40">{l.contact_email}</span>
+              </div>
+              {(l.contact_name || l.linkedin_url) && (
+                <div className="mt-0.5 flex items-center gap-1.5 pl-16 text-jarvis/50">
+                  {l.contact_name && <span>{l.contact_name}</span>}
+                  {l.linkedin_activity && (
+                    <span className="rounded-sm bg-jarvis/10 px-1 py-0.5 text-jarvis-amber">
+                      active {l.linkedin_activity}
+                    </span>
+                  )}
+                  {l.linkedin_url && (
+                    <a
+                      href={l.linkedin_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-jarvis/60 underline decoration-dotted hover:text-jarvis"
+                    >
+                      linkedin ↗
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

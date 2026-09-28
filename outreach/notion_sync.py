@@ -5,10 +5,12 @@ NOTION_API_KEY. Then open your leads database in Notion, "..." menu -> "Add
 connections" -> pick that integration, and copy the database id out of its
 URL (the 32-char id right after the workspace name, before the `?v=`) into
 NOTION_DATABASE_ID. Create the database with these properties first: Company
-(title), Contact (text), Role (text), Domain (text), LinkedIn (url), Status
-(text), Trigger (text), Pitch (text), LinkedIn Note (text - a short message
-you can copy and send yourself on LinkedIn; there's no working automated way
-to find/message this person there, see prospect.py/outreach docs for why).
+(title), Contact (text), Role (text), Domain (text), LinkedIn (url), Active
+(text - when they were active on LinkedIn, e.g. "3 days ago"; blank if
+unknown), Status (text), Trigger (text), Pitch (text), LinkedIn Note (text -
+a short message you can copy and send yourself on LinkedIn; there's no
+working automated way to find/message this person there, see
+prospect.py/outreach docs for why).
 """
 from __future__ import annotations
 
@@ -53,6 +55,8 @@ def sync_lead(
     }
     if lead.get("linkedin_url"):
         props["LinkedIn"] = {"url": lead["linkedin_url"]}
+    if lead.get("linkedin_activity"):
+        props["Active"] = {"rich_text": [{"text": {"content": lead["linkedin_activity"][:200]}}]}
     if pitch:
         props["Pitch"] = {"rich_text": [{"text": {"content": pitch[:2000]}}]}
     if linkedin_note:

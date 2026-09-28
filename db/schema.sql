@@ -1,53 +1,8 @@
--- Schema for the autonomous viral-content marketing pipeline.
+-- Schema for the sales/outreach control plane.
 
-DROP TABLE IF EXISTS sites, pages, products, brand_profiles, generated_brand, generated_images, market_feed CASCADE;
-
--- Agent 1 (Trend Scout): trending topics/formats, scoped per platform.
-CREATE TABLE IF NOT EXISTS trends (
-    id            SERIAL PRIMARY KEY,
-    platform      TEXT NOT NULL,             -- youtube | instagram | linkedin
-    topic         TEXT NOT NULL,
-    angle         TEXT,                      -- suggested content angle/hook
-    format        TEXT,                      -- short-form video | carousel | text-post | ...
-    rationale     TEXT,
-    score         NUMERIC,                   -- 0-10 "how hot right now"
-    source        TEXT,
-    status        TEXT NOT NULL DEFAULT 'new',  -- new | used | stale
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (platform, topic)
-);
-CREATE INDEX IF NOT EXISTS idx_trends_platform ON trends (platform, status, score DESC);
-
--- Agent 2 (Content Studio): one piece of content per platform per trend/topic.
-CREATE TABLE IF NOT EXISTS content_pieces (
-    id            SERIAL PRIMARY KEY,
-    trend_id      INT REFERENCES trends(id) ON DELETE SET NULL,
-    platform      TEXT NOT NULL,
-    title         TEXT,
-    script        TEXT,                      -- youtube voiceover/outline or long-form body
-    caption       TEXT,                      -- ig/linkedin caption text
-    hashtags      TEXT[],
-    cta           TEXT,
-    extra         JSONB,                     -- yt tags/description, thumbnail_prompt, video_path, etc.
-    status        TEXT NOT NULL DEFAULT 'draft',
-        -- draft | ready | ready_manual_upload | posted | failed
-    error         TEXT,
-    external_post_id TEXT,                   -- id/URN returned by the platform after posting
-    external_url  TEXT,
-    posted_at     TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_content_status ON content_pieces (platform, status, created_at DESC);
-
--- Agent 3 (Visual Studio): one thumbnail/cover image per content piece.
-CREATE TABLE IF NOT EXISTS content_images (
-    id            SERIAL PRIMARY KEY,
-    content_id    INT NOT NULL REFERENCES content_pieces(id) ON DELETE CASCADE UNIQUE,
-    prompt        TEXT,
-    rel_path      TEXT,                      -- served path, e.g. /img/content/42.png
-    kind          TEXT NOT NULL DEFAULT 'photo', -- photo | placeholder
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+-- One-time cleanup of tables from a since-removed earlier project. Does NOT
+-- include market_feed - that's live Agent 5 data and must survive restarts.
+DROP TABLE IF EXISTS sites, pages, products, brand_profiles, generated_brand, generated_images CASCADE;
 
 -- --------------------------------------------------------------------------- --
 -- Control plane: the JARVIS console talks to the worker through these tables.
@@ -74,7 +29,7 @@ CREATE TABLE IF NOT EXISTS task_events (
     id        BIGSERIAL PRIMARY KEY,
     task_id   INT REFERENCES tasks(id) ON DELETE CASCADE,
     ts        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    actor     TEXT NOT NULL DEFAULT 'system',  -- orchestrator | agent1 | agent2 | agent3 | agent4 | system | user
+    actor     TEXT NOT NULL DEFAULT 'system',  -- orchestrator | agent5 | geo | sales | system | user
     kind      TEXT NOT NULL DEFAULT 'log',     -- log|tool_call|tool_result|status|error|message|spoken
     message   TEXT,
     data      JSONB
@@ -91,6 +46,20 @@ CREATE TABLE IF NOT EXISTS system_state (
 );
 INSERT INTO system_state (id) VALUES (1) ON CONFLICT DO NOTHING;
 
+-- One connected identity per external platform (LinkedIn, etc.) - the result of the
+-- in-app OAuth "Connect" flow, so agents can post / personalize as the real operator
+-- instead of a manually pasted long-lived token.
+CREATE TABLE IF NOT EXISTS oauth_connections (
+    provider      TEXT PRIMARY KEY,   -- 'linkedin'
+    access_token  TEXT NOT NULL,
+    author_urn    TEXT,               -- e.g. urn:li:person:xxxx (LinkedIn Posts API "author")
+    profile_name  TEXT,
+    profile_email TEXT,
+    scope         TEXT,
+    expires_at    TIMESTAMPTZ,
+    connected_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Agent 5: rolling feed of AI-search / GEO industry developments.
 CREATE TABLE IF NOT EXISTS market_feed (
     id         BIGSERIAL PRIMARY KEY,
@@ -104,23 +73,3 @@ CREATE TABLE IF NOT EXISTS market_feed (
     UNIQUE (headline)
 );
 CREATE INDEX IF NOT EXISTS idx_market_feed_id ON market_feed (id);
-
--- Agent 9 (Ad Studio): faceless AI UGC ad creatives - AI script + AI
--- voiceover + B-roll + burned captions, ready to post as a paid-social ad.
-CREATE TABLE IF NOT EXISTS ads (
-    id            SERIAL PRIMARY KEY,
-    niche         TEXT NOT NULL,
-    product       TEXT,
-    hook          TEXT,
-    script        TEXT,                          -- full voiceover text
-    seconds       NUMERIC,
-    path          TEXT,                          -- rendered vertical mp4
-    thumb_path    TEXT,
-    youtube_id    TEXT,
-    youtube_url   TEXT,
-    privacy       TEXT NOT NULL DEFAULT 'unlisted',
-    status        TEXT NOT NULL DEFAULT 'queued', -- queued|scripted|rendered|uploaded|failed
-    error         TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_ads_status ON ads (status, created_at DESC);

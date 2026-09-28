@@ -54,22 +54,16 @@ class Settings:
     notion_api_key: str = os.getenv("NOTION_API_KEY", "")
     notion_database_id: str = os.getenv("NOTION_DATABASE_ID", "")
 
-    # Agent 4 — autonomous publish cycle. 0 disables the automatic feed.
-    auto_content_minutes: int = int(os.getenv("AUTO_CONTENT_MINUTES", "60"))
+    # LinkedIn OAuth app, for the one-time "Connect LinkedIn" button in the console
+    # (sign-in only - profile name/email for personalizing outreach, no posting).
+    # Create at linkedin.com/developers/apps, add product "Sign In with LinkedIn
+    # using OpenID Connect", then set the app's redirect URL to
+    # {PUBLIC_BASE_URL or http://127.0.0.1:8000}/api/linkedin/callback.
+    linkedin_client_id: str = os.getenv("LINKEDIN_CLIENT_ID", "")
+    linkedin_client_secret: str = os.getenv("LINKEDIN_CLIENT_SECRET", "")
 
-    # Social platform credentials (all optional; posting for a platform is skipped
-    # with a clear error until its credentials are filled in).
-    linkedin_access_token: str = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
-    linkedin_author_urn: str = os.getenv("LINKEDIN_AUTHOR_URN", "")
-
-    instagram_access_token: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
-    instagram_user_id: str = os.getenv("INSTAGRAM_USER_ID", "")
-
-    youtube_client_secret_json: str = os.getenv("YOUTUBE_CLIENT_SECRET_JSON", "")
-    youtube_refresh_token: str = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
-
-    # Publicly reachable base URL for this server (needed by Instagram, which must
-    # fetch generated images over the internet, e.g. via ngrok/Cloudflare Tunnel).
+    # Publicly reachable base URL for this server, only needed if it's deployed
+    # somewhere other than localhost (changes the LinkedIn OAuth redirect URI).
     public_base_url: str = os.getenv("PUBLIC_BASE_URL", "")
 
     database_url: str = os.getenv(

@@ -10,8 +10,8 @@ from db.database import get_conn
 
 _LEAD_COLS = [
     "id", "company", "domain", "contact_name", "contact_role", "contact_email",
-    "email_status", "industry", "icp_fit", "trigger", "geo_score", "geo_finding",
-    "status", "last_action_at", "created_at",
+    "email_status", "linkedin_url", "linkedin_activity", "industry", "icp_fit",
+    "trigger", "geo_score", "geo_finding", "status", "last_action_at", "created_at",
 ]
 _MSG_COLS = ["id", "lead_id", "company", "channel", "direction", "step", "status", "subject", "body", "ts"]
 

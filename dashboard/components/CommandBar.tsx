@@ -61,7 +61,7 @@ export function CommandBar({
         placeholder={
           disabled
             ? "JARVIS is powered down — press ⏻ to bring it back online"
-            : "Ask JARVIS…  “find a trending LinkedIn topic and post about it”"
+            : "Ask JARVIS…  “find me clients and run an outreach cycle”"
         }
         className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-jarvis outline-none placeholder:text-jarvis/30 disabled:opacity-40"
         disabled={disabled}

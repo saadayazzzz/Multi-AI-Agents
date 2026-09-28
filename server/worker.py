@@ -96,7 +96,6 @@ def run() -> None:
 
         task = _claim_task()
         if task is None:
-            _maybe_auto_content()
             time.sleep(settings.worker_poll_seconds)
             continue
 
@@ -128,37 +127,6 @@ def _power_off() -> bool:
         return (row or {}).get("power") == "off"
     except Exception:  # noqa: BLE001 - never let a hiccup wedge the loop
         return False
-
-
-_started = time.monotonic()
-_last_auto = 0.0
-_auto_platform_idx = 0
-_PLATFORMS = ["youtube", "instagram", "linkedin"]
-
-
-def _maybe_auto_content() -> None:
-    """Auto-run the full scout->write->visualize->publish cycle on an interval
-    while the queue is idle, round-robining across platforms - this is what
-    makes the content-marketing pipeline fully autonomous with no prompting."""
-    global _last_auto, _auto_platform_idx
-    if settings.auto_content_minutes <= 0:
-        return
-    now = time.monotonic()
-    if _last_auto == 0.0:
-        if now - _started < 25:  # let the stack settle before the first cycle
-            return
-    elif now - _last_auto < settings.auto_content_minutes * 60:
-        return
-    _last_auto = now
-    platform = _PLATFORMS[_auto_platform_idx % len(_PLATFORMS)]
-    _auto_platform_idx += 1
-    try:
-        from agents.agent4_publisher import run_full_cycle
-
-        r = run_full_cycle(platform)
-        print(f"worker: auto-content [{platform}] -> {r}")
-    except Exception as e:  # noqa: BLE001 - never let a hiccup wedge the loop
-        print(f"worker: auto-content [{platform}] failed: {e}")
 
 
 if __name__ == "__main__":

@@ -55,13 +55,16 @@ def run_cycle(
         for c in found:
             conn.execute(
                 """
-                INSERT INTO leads (campaign_id, company, domain, industry, icp_fit, trigger)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO leads (campaign_id, company, domain, industry, icp_fit, trigger,
+                    contact_name, contact_role, linkedin_url, linkedin_activity)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (campaign_id, domain) DO NOTHING
                 """,
-                (campaign_id, c["company"], c["domain"], c["industry"], c["icp_fit"], c["trigger"]),
+                (campaign_id, c["company"], c["domain"], c["industry"], c["icp_fit"], c["trigger"],
+                 c.get("contact_name"), c.get("contact_role"), c.get("linkedin_url"),
+                 c.get("posted_when")),
             )
-    report(f"  prospected {len(found)} new companies")
+    report(f"  prospected {len(found)} new companies (from real, recent LinkedIn posts)")
 
     # 2. enrich (finds the CEO/founder as contact)
     _for_status(campaign_id, "new", lambda lead: _enrich(lead))
@@ -157,6 +160,12 @@ def _for_status(campaign_id: int, status: str, fn) -> None:
 
 def _enrich(lead: dict) -> None:
     e = enrich_lead(lead)
+    # prospect.py's contact_name/trigger came from a real, sourced LinkedIn
+    # post - keep them over enrich_lead()'s independent (unsourced) guess.
+    # Only fill in what prospecting didn't already find.
+    contact_name = lead.get("contact_name") or e["contact_name"]
+    contact_role = lead.get("contact_role") or e["contact_role"]
+    trigger = lead.get("trigger") or e["trigger"]
     with get_conn() as conn:
         conn.execute(
             """
@@ -164,10 +173,10 @@ def _enrich(lead: dict) -> None:
                 email_status = %s, trigger = %s, status = 'enriched', last_action_at = now()
             WHERE id = %s
             """,
-            (e["contact_name"], e["contact_role"], e["contact_email"],
-             e["email_status"], e["trigger"], lead["id"]),
+            (contact_name, contact_role, e["contact_email"],
+             e["email_status"], trigger, lead["id"]),
         )
-    report(f"  enriched {lead['company']} -> {e['contact_role']} <{e['contact_email']}>")
+    report(f"  enriched {lead['company']} -> {contact_role} <{e['contact_email']}>")
 
 
 def _score(lead: dict, camp: dict, n: int) -> None:

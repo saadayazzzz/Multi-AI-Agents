@@ -3,11 +3,6 @@ export const API_BASE =
 
 export const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws";
 
-/** URL for a rendered video row's file, served by the API's /media mounts. */
-export function mediaUrl(kind: "ads" | "videos", id: number): string {
-  return `${API_BASE}/media/${kind}/${id}/final.mp4`;
-}
-
 export type AgentState = {
   actor: string;
   state: "idle" | "working";
@@ -17,11 +12,9 @@ export type AgentState = {
 };
 
 export type Stats = {
-  trends: Record<string, number>;
-  trends_total: number;
-  content_by_status: Record<string, number>;
-  content_total: number;
-  posted_by_platform: Record<string, number>;
+  market_total: number;
+  leads_by_status: Record<string, number>;
+  leads_total: number;
   tasks_pending: number;
   power?: "on" | "off";
 };
@@ -50,30 +43,15 @@ export type TaskEvent = {
   ts: string;
 };
 
-export type ContentPiece = {
-  id: number;
-  platform: string;
-  title: string | null;
-  script: string | null;
-  caption: string | null;
-  cta: string | null;
-  hashtags: string[] | null;
-  status: "draft" | "ready" | "ready_manual_upload" | "posted" | "failed";
-  external_url: string | null;
-  error: string | null;
-  created_at: string;
-  posted_at: string | null;
-  image_rel_path: string | null;
-};
-
-export type TrendItem = {
+/** One row from Agent 1's (Market Pulse) AI-search/GEO industry feed. */
+export type MarketItem = {
   id: number;
   ts: string;
-  platform: string;
-  topic: string;
-  angle: string | null;
-  format: string | null;
-  score: number | null;
+  headline: string;
+  detail: string | null;
+  tag: string | null;
+  sentiment: "positive" | "neutral" | "negative" | null;
+  region: string | null;
   source: string | null;
 };
 
@@ -97,11 +75,6 @@ export async function setPower(state: "on" | "off"): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ state }),
   });
-}
-
-export async function getContent(): Promise<ContentPiece[]> {
-  const res = await fetch(`${API_BASE}/api/content`, { cache: "no-store" });
-  return res.ok ? res.json() : [];
 }
 
 export type GeoQuery = {
@@ -145,9 +118,15 @@ export type OutreachLead = {
   id: number;
   company: string;
   domain: string | null;
+  contact_name: string | null;
   contact_role: string | null;
   contact_email: string | null;
   email_status: string;
+  /** the real linkedin.com URL behind this lead's why-now signal, if any */
+  linkedin_url: string | null;
+  /** when they were active, as the search result showed it (e.g. "3 days ago") */
+  linkedin_activity: string | null;
+  trigger: string | null;
   icp_fit: number | null;
   geo_score: number | null;
   geo_finding: string | null;
@@ -171,50 +150,31 @@ export async function getOutreachLatest(): Promise<OutreachLatest | null> {
   }
 }
 
-export type StudioVideo = {
-  id: number;
-  theme: string;
-  title: string | null;
-  clip_count: number | null;
-  seconds: number | null;
-  privacy: string;
-  status: "draft" | "rendered" | "uploaded" | "failed";
-  youtube_url: string | null;
-  created_at: string;
-};
+export type LinkedInStatus =
+  | { connected: false; configured: boolean }
+  | {
+      connected: true;
+      configured: true;
+      name: string | null;
+      email: string | null;
+      expires_at: string | null;
+      connected_at: string;
+    };
 
-export async function getStudioRecent(): Promise<StudioVideo[]> {
+export async function getLinkedInStatus(): Promise<LinkedInStatus> {
   try {
-    const res = await fetch(`${API_BASE}/api/studio/recent`, { cache: "no-store" });
-    return res.ok ? res.json() : [];
+    const res = await fetch(`${API_BASE}/api/linkedin/status`, { cache: "no-store" });
+    return res.ok ? res.json() : { connected: false, configured: false };
   } catch {
-    return [];
+    return { connected: false, configured: false };
   }
 }
 
-export type AdVideo = {
-  id: number;
-  niche: string;
-  product: string | null;
-  hook: string | null;
-  seconds: number | null;
-  privacy: string;
-  status: "queued" | "scripted" | "rendered" | "uploaded" | "failed";
-  youtube_url: string | null;
-  created_at: string;
-};
-
-export async function getAdsRecent(): Promise<AdVideo[]> {
-  try {
-    const res = await fetch(`${API_BASE}/api/ads/recent`, { cache: "no-store" });
-    return res.ok ? res.json() : [];
-  } catch {
-    return [];
-  }
+/** Full-page redirect into LinkedIn's own consent screen — never a fetch. */
+export function linkedinLoginUrl(): string {
+  return `${API_BASE}/api/linkedin/login`;
 }
 
-export async function approveContent(id: number): Promise<ContentPiece> {
-  const res = await fetch(`${API_BASE}/api/content/${id}/approve`, { method: "POST" });
-  if (!res.ok) throw new Error(`approveContent failed: ${res.status}`);
-  return res.json();
+export async function disconnectLinkedIn(): Promise<void> {
+  await fetch(`${API_BASE}/api/linkedin/disconnect`, { method: "POST" });
 }

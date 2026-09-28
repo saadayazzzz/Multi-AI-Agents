@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS leads (
     email_status    TEXT NOT NULL DEFAULT 'unknown',  -- unknown | guessed | verified | bounced
     linkedin_url    TEXT,
     linkedin_urn    TEXT,
+    linkedin_activity TEXT,  -- when they were active, as the search result showed it
+                             -- e.g. '3 days ago', 'Jan 14' - null if no date was visible
     notion_page_id  TEXT,
     industry        TEXT,
     icp_fit         INT,                              -- 0-100
@@ -40,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (campaign_id, status);
 -- Additive migration for tables created before these columns existed.
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_urn TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_activity TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
 
 CREATE TABLE IF NOT EXISTS messages (

@@ -4,20 +4,11 @@ import type { AgentState } from "@/lib/api";
 
 const NAMES: Record<string, [string, string]> = {
   orchestrator: ["JARVIS", "Orchestrator"],
-  agent1: ["Agent 1", "Trend Scout"],
-  agent2: ["Agent 2", "Content Studio"],
-  agent3: ["Agent 3", "Visual Studio"],
-  agent4: ["Agent 4", "Publisher"],
-  agent5: ["Agent 5", "AI Search Pulse"],
-  geo: ["Agent 6", "AI Visibility"],
-  sales: ["Agent 7", "Outbound Sales"],
-  studio: ["Agent 8", "Video Studio"],
-  ads: ["Agent 9", "Ad Studio"],
+  agent5: ["Agent 1", "Market Pulse"],
+  geo: ["Agent 2", "AI Visibility"],
+  sales: ["Agent 3", "Outbound Sales"],
 };
-const ORDER = [
-  "orchestrator", "agent1", "agent2", "agent3", "agent4", "agent5",
-  "geo", "sales", "studio", "ads",
-];
+const ORDER = ["orchestrator", "agent5", "geo", "sales"];
 
 export function AgentGrid({ agents, busy }: { agents: AgentState[]; busy: boolean }) {
   const rows = ORDER.map(

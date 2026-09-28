@@ -1,16 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  createTask,
-  getContent,
-  getGeoLatest,
-  getOutreachLatest,
-  setPower,
-  type ContentPiece,
-  type GeoLatest,
-  type OutreachLatest,
-} from "@/lib/api";
+import { createTask, getGeoLatest, getOutreachLatest, setPower, type GeoLatest, type OutreachLatest } from "@/lib/api";
 import { useJarvis } from "@/lib/useJarvis";
 import { useVoice } from "@/lib/useVoice";
 import { useClapDetector } from "@/lib/useClapDetector";
@@ -23,14 +14,9 @@ import { CoreCallouts } from "@/components/CoreCallouts";
 import { AgentGrid } from "@/components/AgentGrid";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { TaskQueue } from "@/components/TaskQueue";
-import { ApprovalQueue } from "@/components/ApprovalQueue";
-import { ContentReviewModal } from "@/components/ContentReviewModal";
 import { Analytics } from "@/components/Analytics";
 import { GeoScore } from "@/components/GeoScore";
 import { OutreachPanel } from "@/components/OutreachPanel";
-import { StudioPanel } from "@/components/StudioPanel";
-import { AdsPanel } from "@/components/AdsPanel";
-import { VideoViewer, type PlayingVideo } from "@/components/VideoViewer";
 import { CommandBar } from "@/components/CommandBar";
 
 const CORE_COPY: Record<CoreState, string> = {
@@ -42,7 +28,7 @@ const CORE_COPY: Record<CoreState, string> = {
 };
 
 export default function Console() {
-  const { connected, stats, agents, tasks, events, trends, latestSpoken } = useJarvis();
+  const { connected, stats, agents, tasks, events, market, latestSpoken } = useJarvis();
   const voice = useVoice();
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -67,18 +53,6 @@ export default function Console() {
     };
   }, []);
   const pulseTimer = useRef<ReturnType<typeof setTimeout>>();
-  const [content, setContent] = useState<ContentPiece[]>([]);
-  const refreshContent = useCallback(() => {
-    getContent().then(setContent).catch(() => {});
-  }, []);
-  useEffect(() => {
-    refreshContent();
-    const iv = setInterval(refreshContent, 5000);
-    return () => clearInterval(iv);
-  }, [refreshContent]);
-  const awaitingApproval = useMemo(() => content.filter((c) => c.status === "ready"), [content]);
-  const [reviewing, setReviewing] = useState<ContentPiece | null>(null);
-  const [playing, setPlaying] = useState<PlayingVideo | null>(null);
 
   const power = localPower ?? stats?.power ?? "on";
   const off = power === "off";
@@ -212,9 +186,9 @@ export default function Console() {
       {/* beams from core -> panels (drawn one at a time) */}
       <TetherLines shown={shown} />
 
-      {/* trend radar — mini headlines on the core's radial lines + bottom ticker */}
-      <CoreCallouts items={off ? [] : trends} />
-      <MarketFeed items={off ? [] : trends} />
+      {/* worldwide market feed — mini headlines on the core's radial lines + bottom ticker */}
+      <CoreCallouts items={off ? [] : market} />
+      <MarketFeed items={off ? [] : market} />
 
       {/* top bar */}
       <header className="pointer-events-auto absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-3">
@@ -223,7 +197,7 @@ export default function Console() {
             JARVIS
           </span>
           <span className="hidden font-mono text-[10px] text-jarvis/35 md:inline">
-            multi-agent control plane
+            outbound sales control plane
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -283,7 +257,7 @@ export default function Console() {
         <ActivityFeed events={events} />
       </HudPanel>
 
-      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 9}>
+      <HudPanel corner="tl" open={isOpen("tl")} title="Agents" count={agents.length || 3}>
         <AgentGrid agents={agents} busy={busy} />
       </HudPanel>
 
@@ -293,25 +267,11 @@ export default function Console() {
         <Analytics stats={stats} tasks={tasks} />
       </HudPanel>
 
-      <HudPanel corner="bl" open={isOpen("bl")} title="Studio · Pipeline · Tasks" count={tasks.length}>
-        <StudioPanel onPlay={setPlaying} />
-        <div className="border-t border-jarvis/15" />
-        <AdsPanel onPlay={setPlaying} />
-        <div className="border-t border-jarvis/15" />
+      <HudPanel corner="bl" open={isOpen("bl")} title="Outreach · Tasks" count={tasks.length}>
         <OutreachPanel />
-        <div className="border-t border-jarvis/15" />
-        <ApprovalQueue items={awaitingApproval} onApproved={refreshContent} onOpen={setReviewing} />
         <div className="border-t border-jarvis/15" />
         <TaskQueue tasks={tasks} />
       </HudPanel>
-
-      <VideoViewer video={playing} onClose={() => setPlaying(null)} />
-
-      <ContentReviewModal
-        content={reviewing}
-        onClose={() => setReviewing(null)}
-        onApproved={refreshContent}
-      />
 
       {/* center — core + command */}
       <div
@@ -332,8 +292,8 @@ export default function Console() {
                 value: geo ? Number(geo.score.score).toFixed(0) : "–",
               },
               { label: "Leads", value: outreach?.total ?? "–" },
-              { label: "Content", value: stats?.content_total ?? "–" },
-              { label: "Feed", value: trends.length },
+              { label: "Sent", value: outreach?.counts?.sent ?? 0 },
+              { label: "Feed", value: market.length },
             ]}
           />
           <div className="flex h-5 items-center gap-2">

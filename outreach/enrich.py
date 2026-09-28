@@ -38,6 +38,19 @@ def guess_email(domain: str, name: str | None) -> tuple[str, str]:
 
 
 def enrich_lead(lead: dict[str, Any]) -> dict[str, Any]:
+    # prospect.py already found a sourced contact (a real LinkedIn post) for
+    # most leads now - only spend a research call hunting for one when it didn't.
+    if lead.get("contact_name"):
+        email, status = guess_email(lead["domain"], lead["contact_name"])
+        return {
+            "contact_name": lead["contact_name"],
+            "contact_role": lead.get("contact_role") or "Founder",
+            "contact_email": email,
+            "email_status": status,
+            "trigger": lead.get("trigger"),
+            "context": None,
+        }
+
     notes = research(
         _SYS,
         f"Company: {lead['company']}  ({lead['domain']})\n"

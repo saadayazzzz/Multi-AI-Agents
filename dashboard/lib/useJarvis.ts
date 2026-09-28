@@ -4,14 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   WS_URL,
   type AgentState,
-  type TrendItem,
+  type MarketItem,
   type Stats,
   type Task,
   type TaskEvent,
 } from "./api";
 
 const MAX_EVENTS = 400;
-const MAX_TRENDS = 60;
+const MAX_MARKET = 60;
 
 export type JarvisFeed = {
   connected: boolean;
@@ -19,7 +19,7 @@ export type JarvisFeed = {
   agents: AgentState[];
   tasks: Task[];
   events: TaskEvent[];
-  trends: TrendItem[];
+  market: MarketItem[];
   /** newest orchestrator/system line meant to be spoken, or null */
   latestSpoken: { id: number; text: string } | null;
 };
@@ -30,13 +30,13 @@ export function useJarvis(): JarvisFeed {
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<TaskEvent[]>([]);
-  const [trends, setTrends] = useState<TrendItem[]>([]);
+  const [market, setMarket] = useState<MarketItem[]>([]);
   const [latestSpoken, setLatestSpoken] = useState<{ id: number; text: string } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
   const deadRef = useRef(false); // set on unmount so a pending reconnect is cancelled
   const seenRef = useRef<Set<number>>(new Set());
-  const trendSeenRef = useRef<Set<number>>(new Set());
+  const marketSeenRef = useRef<Set<number>>(new Set());
 
   const connect = useCallback(() => {
     if (deadRef.current) return;
@@ -61,20 +61,20 @@ export function useJarvis(): JarvisFeed {
         if (msg.stats) setStats(msg.stats);
         if (msg.agents) setAgents(msg.agents);
         if (msg.tasks) setTasks(msg.tasks);
-        if (msg.trends) {
-          const m: TrendItem[] = msg.trends;
-          m.forEach((x) => trendSeenRef.current.add(x.id));
-          setTrends(m.slice(-MAX_TRENDS));
+        if (msg.market) {
+          const m: MarketItem[] = msg.market;
+          m.forEach((x) => marketSeenRef.current.add(x.id));
+          setMarket(m.slice(-MAX_MARKET));
         }
         return;
       }
-      if (msg.type === "trends") {
-        const fresh: TrendItem[] = (msg.items as TrendItem[]).filter(
-          (x) => !trendSeenRef.current.has(x.id),
+      if (msg.type === "market") {
+        const fresh: MarketItem[] = (msg.items as MarketItem[]).filter(
+          (x) => !marketSeenRef.current.has(x.id),
         );
         if (!fresh.length) return;
-        fresh.forEach((x) => trendSeenRef.current.add(x.id));
-        setTrends((prev) => [...prev, ...fresh].slice(-MAX_TRENDS));
+        fresh.forEach((x) => marketSeenRef.current.add(x.id));
+        setMarket((prev) => [...prev, ...fresh].slice(-MAX_MARKET));
         return;
       }
       if (msg.type !== "events") return;
@@ -111,5 +111,5 @@ export function useJarvis(): JarvisFeed {
     };
   }, [connect]);
 
-  return { connected, stats, agents, tasks, events, trends, latestSpoken };
+  return { connected, stats, agents, tasks, events, market, latestSpoken };
 }

@@ -14,7 +14,7 @@ const COLOR: Record<string, string> = {
 };
 
 const ABBR: Record<string, string> = {
-  orchestrator: "orch", agent1: "a1", agent2: "a2", agent3: "a3", agent4: "a4",
+  orchestrator: "orch", agent5: "a1", geo: "geo", sales: "sales",
   system: "sys", user: "you",
 };
 

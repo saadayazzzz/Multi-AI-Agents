@@ -28,7 +28,7 @@ def parse_file_blocks(text: str) -> dict[str, str]:
     return {m.group("path").strip(): m.group("body") for m in _FILE_RE.finditer(text)}
 
 
-def _tavily_search(query: str, max_results: int = 6) -> str | None:
+def _tavily_search(query: str, max_results: int = 10) -> str | None:
     """Real, current web search results as a text block, or None if Tavily
     isn't configured/reachable - callers should fall back to their own
     provider's search (if any) or plain model knowledge in that case."""
@@ -42,7 +42,7 @@ def _tavily_search(query: str, max_results: int = 6) -> str | None:
             json={
                 "api_key": settings.tavily_api_key,
                 "query": query[:400],
-                "search_depth": "basic",
+                "search_depth": "advanced",
                 "max_results": max_results,
             },
             timeout=30,
