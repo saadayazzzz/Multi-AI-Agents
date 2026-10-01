@@ -10,7 +10,9 @@ NOTION_DATABASE_ID. Create the database with these properties first: Company
 unknown), Status (text), Trigger (text), Pitch (text), LinkedIn Note (text -
 a short message you can copy and send yourself on LinkedIn; there's no
 working automated way to find/message this person there, see
-prospect.py/outreach docs for why).
+prospect.py/outreach docs for why), Date (date type - when the lead was
+first prospected, from the leads table's own created_at, not when it
+happened to get synced/re-synced).
 """
 from __future__ import annotations
 
@@ -57,16 +59,18 @@ def sync_lead(
         props["LinkedIn"] = {"url": lead["linkedin_url"]}
     if lead.get("linkedin_activity"):
         props["Active"] = {"rich_text": [{"text": {"content": lead["linkedin_activity"][:200]}}]}
+    if lead.get("created_at"):
+        props["Date"] = {"date": {"start": lead["created_at"].isoformat()}}
     if pitch:
         props["Pitch"] = {"rich_text": [{"text": {"content": pitch[:2000]}}]}
     if linkedin_note:
         props["LinkedIn Note"] = {"rich_text": [{"text": {"content": linkedin_note[:2000]}}]}
-
+    
     page_id = lead.get("notion_page_id")
     if page_id:
         client.pages.update(page_id=page_id, properties=props)
         return page_id
-
+    
     page = client.pages.create(
         parent={"database_id": settings.notion_database_id}, properties=props,
     )
