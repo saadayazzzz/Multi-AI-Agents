@@ -44,14 +44,32 @@ MAX_AGE_DAYS = 15  # LinkedIn snippets rarely expose an exact date - a 7-day
 # (not the 5-months-old case this was built to catch) while actually yielding
 # leads against what search engines index of LinkedIn.
 
+MIN_ICP_FIT = 50  # a second, code-enforced line of defense on top of the
+# prompt instructions below - catches the model scoring a competing agency/
+# consultant's own marketing post low-but-nonzero instead of the intended 0.
+
 _SYS = (
     "You are a B2B sales researcher for a solo builder who creates custom AI "
     "agents and automation systems for businesses. You find real, current "
     "buying signals - not just companies that fit a description. A signal is "
     "a specific, named founder or CEO who PUBLICLY posted on LinkedIn, within "
-    "roughly the last 15 days, something showing they need help with manual/"
-    "repetitive work, scaling problems, being understaffed on ops, or "
-    "automation in general. You have no LinkedIn login or API access - you "
+    "roughly the last 15 days, describing a manual/repetitive-work, scaling, "
+    "understaffed-ops, or automation problem happening INSIDE THEIR OWN "
+    "COMPANY, in their own voice, as something they themselves are living "
+    "through right now.\n\n"
+    "Explicitly EXCLUDE posts where the poster is an agency, consultant, "
+    "freelancer, or automation/ops/AI-automation provider talking about this "
+    "problem in general, or about 'a client of mine', or any other third "
+    "party - that is their own marketing content, not a buying signal, and "
+    "they are a competitor, not a prospect, even if the words match "
+    "perfectly. A strong tell: the post reads like advice or a case study "
+    "('I help businesses...', 'here's what I see with founders...', 'a "
+    "client told me...') rather than a first-person account of their own "
+    "company's actual situation right now. When unsure whether the pain is "
+    "the poster's own or something they sell a fix for, treat it as the "
+    "latter and exclude it - a shorter, genuinely-a-buyer list beats a "
+    "longer list padded with other service providers.\n\n"
+    "You have no LinkedIn login or API access - you "
     "only see what a public web search surfaces (the same URL, title, and "
     "snippet a person would get googling `site:linkedin.com`), so you can "
     "only report posts a search actually returned, never invent one. If a "
@@ -257,7 +275,11 @@ def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
         _SYS,
         f"Extract ONLY people/companies explicitly named in the notes below - "
         f"do not invent or infer anything not literally mentioned there. Score "
-        f"icp_fit against this target profile (0 if it's a poor match): {icp}\n\n"
+        f"icp_fit against this target profile (0 if it's a poor match, and "
+        f"ALSO 0 if the poster is themselves an agency/consultant/automation "
+        f"provider describing the problem generically or via a client's "
+        f"story rather than their own company's real situation - see system "
+        f"prompt): {icp}\n\n"
         f"For linkedin_url use the exact 'Post URL' given for that person. For "
         f"posted_when use the exact 'Posted' value given, verbatim.\n\n" + notes,
         _SCHEMA,
@@ -265,6 +287,7 @@ def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
     )
     out: list[dict] = []
     dropped_bad_domain = 0
+    dropped_low_fit = 0
     for c in data["companies"]:
         dom = c["domain"].lower().strip().replace("https://", "").replace("http://", "")
         dom = dom.replace("www.", "").strip("/")
@@ -273,12 +296,21 @@ def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
         url = (c.get("linkedin_url") or "").strip()
         if not url or not _LINKEDIN_URL_RE.match(url):
             continue
+        if (c.get("icp_fit") or 0) < MIN_ICP_FIT:
+            dropped_low_fit += 1
+            continue
         if not _domain_is_real(dom):
             dropped_bad_domain += 1
             continue
         out.append({**c, "domain": dom, "linkedin_url": url})
         if len(out) >= n:
             break
+    if dropped_low_fit:
+        report(
+            f"  dropped {dropped_low_fit} low icp_fit (likely other service "
+            f"providers pitching, not real buyers) - live LinkedIn search path",
+            kind="status",
+        )
     if dropped_bad_domain:
         report(
             f"  dropped {dropped_bad_domain} unverifiable/fabricated companies "
@@ -329,7 +361,10 @@ def find_leads(icp: str, n: int = 10, exclude: set[str] | None = None) -> list[d
             f"do not invent or infer anything not literally mentioned there. Score "
             f"icp_fit against this target profile (0 if it's a poor match - a real "
             f"person's post that doesn't fit the profile is still real, just low-"
-            f"fit, not something to invent around): {icp}\n\n"
+            f"fit, not something to invent around; ALSO 0 if the poster is "
+            f"themselves an agency/consultant/automation provider describing the "
+            f"problem generically or via a client's story rather than their own "
+            f"company's real situation - see system prompt): {icp}\n\n"
             f"Drop anything without both a real domain and a real linkedin.com "
             f"URL. For posted_when: only a literal date or relative-time marker "
             f"from the notes counts - if the notes only say something vague like "
@@ -346,6 +381,7 @@ def find_leads(icp: str, n: int = 10, exclude: set[str] | None = None) -> list[d
     dropped_bad_domain = 0
     dropped_stale = 0
     dropped_no_date = 0
+    dropped_low_fit = 0
     for c in data["companies"]:
         dom = c["domain"].lower().strip().replace("https://", "").replace("http://", "")
         dom = dom.replace("www.", "").strip("/")
@@ -378,12 +414,21 @@ def find_leads(icp: str, n: int = 10, exclude: set[str] | None = None) -> list[d
         if age > MAX_AGE_DAYS:
             dropped_stale += 1
             continue
+        if (c.get("icp_fit") or 0) < MIN_ICP_FIT:
+            dropped_low_fit += 1
+            continue
         if not _domain_is_real(dom):
             dropped_bad_domain += 1
             continue
         out.append({**c, "domain": dom, "linkedin_url": url, "posted_when": posted_when})
         if len(out) >= n:
             break
+    if dropped_low_fit:
+        report(
+            f"  dropped {dropped_low_fit} low icp_fit (likely other service "
+            f"providers pitching, not real buyers)",
+            kind="status",
+        )
     if dropped_no_source:
         report(
             f"  dropped {dropped_no_source} without a real LinkedIn source "

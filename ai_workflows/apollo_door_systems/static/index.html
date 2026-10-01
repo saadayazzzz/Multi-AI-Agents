@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apollo Door Systems — AI Quoting Agent (Demo)</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151c;
+    --panel-2: #171b24;
+    --border: #262b36;
+    --text: #e7eaf0;
+    --muted: #8a93a6;
+    --accent: #3ddc97;
+    --accent-dim: #1f6b4d;
+    --warn: #e8b949;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    line-height: 1.5;
+  }
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 32px 60px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  @media (min-width: 900px) {
+    .wrap { grid-template-columns: 1fr 1fr; }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 12px;
+    font-size: 13px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    resize: vertical;
+  }
+  button {
+    margin-top: 14px;
+    background: var(--accent);
+    color: #04140d;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  .full { grid-column: 1 / -1; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--muted); min-width: 160px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tfoot td { font-weight: 700; border-top: 1px solid var(--border); border-bottom: none; }
+  ul.flags { margin: 0; padding-left: 18px; }
+  ul.flags li { margin-bottom: 8px; font-size: 13.5px; color: #d7dbe4; }
+  .badge { display: inline-block; background: var(--accent-dim); color: var(--accent); font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600; letter-spacing: 0.03em; }
+  .status { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 13.5px; }
+  .footer-note { color: var(--muted); font-size: 12.5px; margin-top: 30px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Apollo Door Systems — AI Quoting &amp; Compliance Agent</h1>
+  <p>Prototype built around how Jerry runs the back office today: read the lead, draft the quote, flag what needs checking, push it to Notion.</p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1. Incoming RFQ</h2>
+    <textarea id="rfq"></textarea>
+    <button id="run">Process this lead →</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Extracted job details <span class="badge" id="badge-job" style="display:none">done</span></h2>
+    <div id="job"><p class="empty">Run the agent to see this.</p></div>
+  </div>
+
+  <div class="card full">
+    <h2>3. Draft quote <span class="badge" id="badge-quote" style="display:none">done</span></h2>
+    <div id="quote"><p class="empty">Run the agent to see this.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>4. Compliance checklist <span class="badge" id="badge-compliance" style="display:none">done</span></h2>
+    <div id="compliance"><p class="empty">Run the agent to see this.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>5. Record pushed to Notion <span class="badge" id="badge-record" style="display:none">done</span></h2>
+    <div id="record"><p class="empty">Run the agent to see this.</p></div>
+  </div>
+</div>
+
+<p class="footer-note">This runs the real extraction/quoting agent live, on a sample RFQ. Point it at Jerry's real inbox and price list and it runs the same way on real leads.</p>
+
+<script>
+const API = "";
+
+async function loadSample() {
+  const r = await fetch(API + "/api/apollo/sample");
+  const data = await r.json();
+  document.getElementById("rfq").value = data.rfq_text;
+}
+
+function row(k, v) {
+  return `<div class="row"><div class="k">${k}</div><div>${v ?? "—"}</div></div>`;
+}
+
+function renderJob(job) {
+  let html = "";
+  html += row("Customer", `${job.customer_name || "—"} (${job.customer_company || "—"})`);
+  html += row("Site", job.site_location);
+  html += row("Timeline", job.requested_timeline);
+  html += row("Why now", job.stated_reason_or_context);
+  html += row("Line items", job.line_items.map(i => `${i.quantity}× ${i.description}`).join("<br>"));
+  document.getElementById("job").innerHTML = html;
+  document.getElementById("badge-job").style.display = "inline-block";
+}
+
+function renderQuote(quote) {
+  let rows = quote.lines.map(l => `
+    <tr>
+      <td>${l.description}</td>
+      <td>${l.quantity}</td>
+      <td>${l.line_total != null ? "$" + l.line_total.toLocaleString() : (l.note || "—")}</td>
+    </tr>`).join("");
+  document.getElementById("quote").innerHTML = `
+    <table>
+      <thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="2">Subtotal</td><td>$${quote.subtotal.toLocaleString()}</td></tr></tfoot>
+    </table>`;
+  document.getElementById("badge-quote").style.display = "inline-block";
+}
+
+function renderCompliance(items) {
+  const html = items.length
+    ? `<ul class="flags">${items.map(i => `<li>${i}</li>`).join("")}</ul>`
+    : `<p class="empty">Nothing flagged.</p>`;
+  document.getElementById("compliance").innerHTML = html;
+  document.getElementById("badge-compliance").style.display = "inline-block";
+}
+
+function renderRecord(record) {
+  let html = "";
+  for (const [k, v] of Object.entries(record)) {
+    const val = Array.isArray(v) ? v.length + " item(s)" : v;
+    html += row(k, val);
+  }
+  document.getElementById("record").innerHTML = html;
+  document.getElementById("badge-record").style.display = "inline-block";
+}
+
+async function run() {
+  const btn = document.getElementById("run");
+  const status = document.getElementById("status");
+  btn.disabled = true;
+  status.textContent = "Reading the lead, drafting the quote, checking compliance... (10–20s)";
+  try {
+    const r = await fetch(API + "/api/apollo/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rfq_text: document.getElementById("rfq").value }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderJob(data.job);
+    renderQuote(data.quote);
+    renderCompliance(data.compliance);
+    renderRecord(data.record);
+    status.textContent = "Done.";
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("run").addEventListener("click", run);
+loadSample();
+</script>
+</body>
+</html>
