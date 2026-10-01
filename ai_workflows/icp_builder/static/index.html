@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ICP Builder — AI Prospecting Setup</title>
+<style>
+  :root {
+    --bg: #fdf6f0;
+    --card: #ffffff;
+    --border: #eee0d3;
+    --text: #2a2420;
+    --muted: #8c8075;
+    --accent: #e8763c;
+    --accent-dim: #fbe4d5;
+    --ai-badge: linear-gradient(90deg,#f0587c,#f0a33c);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #fff4e8 0%, #ffe3cf 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+  .brand {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 28px;
+    letter-spacing: -0.3px;
+  }
+  .steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .step-dot {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #e4d5c4;
+    color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+  }
+  .step-dot.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .step-dot.done { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .step-line { width: 46px; height: 2px; background: #e4d5c4; }
+  .step-line.done { background: #1a1a1a; }
+
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 36px 40px;
+    box-shadow: 0 20px 60px -20px rgba(80,40,10,0.15);
+    position: relative;
+  }
+  .ai-badge {
+    position: absolute;
+    top: -12px; left: 28px;
+    background: var(--ai-badge);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+  }
+  h1 { font-size: 24px; margin: 6px 0 6px; text-align: center; }
+  .sub { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 26px; }
+
+  .field { margin-bottom: 22px; }
+  .field label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    border: 1.5px solid #e4d5c4;
+    background: #fff;
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    user-select: none;
+  }
+  .tag.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+  .tag .x { opacity: 0.6; font-weight: 700; }
+  .add-input {
+    border: 1.5px dashed #e4d5c4;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 13px;
+    width: 140px;
+  }
+
+  input[type=text], input[type=url], textarea {
+    width: 100%;
+    border: 1.5px solid #e4d5c4;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fffaf5;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-top: 30px; }
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  .btn-ghost { background: transparent; color: var(--muted); padding: 12px 6px; }
+
+  .loading-box { text-align: center; padding: 10px 0; }
+  .spinner {
+    width: 46px; height: 46px; margin: 0 auto 20px;
+    border-radius: 50%;
+    border: 3px solid var(--accent-dim);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-track { height: 6px; background: #f1e6d9; border-radius: 999px; overflow: hidden; max-width: 320px; margin: 0 auto 22px; }
+  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.5s ease; border-radius: 999px; }
+  .checklist { text-align: left; max-width: 340px; margin: 0 auto; font-size: 14.5px; color: #cfc3b6; }
+  .checklist .item { padding: 8px 0; display: flex; align-items: center; gap: 10px; opacity: 0.4; transform: translateX(-6px); transition: all 0.4s ease; }
+  .checklist .item.active { opacity: 1; transform: translateX(0); color: var(--text); font-weight: 600; }
+  .checklist .item.done { opacity: 1; transform: translateX(0); color: var(--text); }
+  .checklist .mark { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #e4d5c4; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+  .checklist .item.active .mark { border-color: var(--accent); }
+  .checklist .item.active .mark::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 0.9s infinite ease-in-out; }
+  @keyframes pulse { 0%,100% { transform: scale(0.7); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
+  .checklist .item.done .mark { border-color: #2a9d6a; background: #2a9d6a; color: #fff; }
+  .loading-sub { color: var(--muted); font-size: 12.5px; margin-top: 18px; }
+
+  .card { animation: cardIn 0.35s ease; }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .tag { transition: all 0.15s ease; }
+  .tag:active { transform: scale(0.96); }
+
+  .review-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #f1e6d9; font-size: 14px; }
+  .review-row:last-child { border-bottom: none; }
+  .review-row .k { color: var(--muted); min-width: 140px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .review-row .v { text-align: right; flex: 1; }
+
+  .url-entry { text-align: center; }
+  .url-entry input { text-align: center; font-size: 16px; padding: 16px; }
+  .url-entry .or { color: var(--muted); font-size: 13px; margin: 18px 0; }
+
+  .result-box { background: #fffaf5; border: 1px solid #f1e6d9; border-radius: 10px; padding: 16px; font-size: 13px; color: var(--muted); margin-top: 10px; font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">🎯 ICP Builder</div>
+  <div class="steps" id="steps"></div>
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+const API = "";
+let STEP = 0; // 0 = url entry, 1 = loading, 2-6 = wizard steps, 7 = done
+let ICP = null;
+let PROMPT = "";
+
+const STEP_LABELS = ["1","2","3","4"];
+
+function renderSteps(current) {
+  const el = document.getElementById("steps");
+  if (current < 2 || current > 6) { el.innerHTML = ""; return; }
+  const idx = current - 2; // 0..4 across 4 wizard dots (last step merges review)
+  let html = "";
+  for (let i = 0; i < 4; i++) {
+    const state = i < idx ? "done" : i === idx ? "active" : "";
+    html += `<div class="step-dot ${state}">${i < idx ? "✓" : i+1}</div>`;
+    if (i < 3) html += `<div class="step-line ${i < idx ? "done" : ""}"></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function card(html) {
+  const el = document.getElementById("card");
+  el.style.animation = "none";
+  el.offsetHeight; // reflow to restart animation
+  el.style.animation = "";
+  el.innerHTML = html;
+}
+
+function renderUrlEntry() {
+  renderSteps(0);
+  card(`
+    <h1>What's your product?</h1>
+    <p class="sub">Give us your website and we'll draft your ideal-customer profile automatically.</p>
+    <div class="url-entry">
+      <input type="url" id="site-url" placeholder="yourcompany.com" value="https://www.notion.so" />
+      <div class="nav" style="justify-content:center;">
+        <button class="btn-primary" onclick="startFromSite()">Analyze my website →</button>
+      </div>
+      <div class="or">or describe it instead</div>
+      <textarea id="site-desc" placeholder="We build AI agents that automate back-office work for small businesses..."></textarea>
+      <div class="nav" style="justify-content:center; margin-top:14px;">
+        <button class="btn-ghost" onclick="startFromDescription()">Use description instead →</button>
+      </div>
+    </div>
+  `);
+}
+
+const LOADING_STEPS = [
+  "Reading your company description",
+  "Identifying buyer personas",
+  "Mapping target industries",
+  "Pinpointing geographic markets",
+];
+let _loadingTimer = null;
+
+function renderLoading() {
+  renderSteps(1);
+  card(`
+    <h1>Pre-configuring your ICP</h1>
+    <p class="sub">Reasoning through your site to build the right targeting</p>
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="checklist" id="checklist">
+        ${LOADING_STEPS.map((t, i) => `<div class="item" id="li-${i}"><span class="mark"></span>${t}</div>`).join("")}
+      </div>
+      <div class="loading-sub">This usually takes a few seconds</div>
+    </div>
+  `);
+  clearInterval(_loadingTimer);
+  let i = 0;
+  const advance = () => {
+    if (i > 0) {
+      const prev = document.getElementById(`li-${i-1}`);
+      if (prev) { prev.classList.remove("active"); prev.classList.add("done"); prev.querySelector(".mark").innerHTML = "✓"; }
+    }
+    if (i < LOADING_STEPS.length) {
+      const cur = document.getElementById(`li-${i}`);
+      if (cur) cur.classList.add("active");
+      const fill = document.getElementById("progress-fill");
+      if (fill) fill.style.width = `${Math.min(95, (i+1) / LOADING_STEPS.length * 90)}%`;
+      i++;
+    } else {
+      clearInterval(_loadingTimer);
+    }
+  };
+  advance();
+  _loadingTimer = setInterval(advance, 1400);
+}
+
+function finishLoadingBar() {
+  clearInterval(_loadingTimer);
+  const fill = document.getElementById("progress-fill");
+  if (fill) fill.style.width = "100%";
+  document.querySelectorAll(".checklist .item").forEach(el => {
+    el.classList.remove("active");
+    el.classList.add("done");
+    const mark = el.querySelector(".mark");
+    if (mark) mark.innerHTML = "✓";
+  });
+}
+
+async function startFromSite() {
+  const url = document.getElementById("site-url").value.trim();
+  if (!url) return;
+  STEP = 1; renderLoading();
+  try {
+    const r = await fetch(API + "/api/icp/from-site", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || "failed");
+    const data = await r.json();
+    ICP = data.icp; PROMPT = data.prompt;
+    finishLoadingBar();
+    await new Promise(res => setTimeout(res, 350));
+    STEP = 2; renderRoles();
+  } catch (e) {
+    clearInterval(_loadingTimer);
+    card(`<h1>Couldn't read that site</h1><p class="sub">${e.message}</p><div class="nav" style="justify-content:center"><button class="btn-primary" onclick="renderUrlEntry()">← Back</button></div>`);
+  }
+}
+
+async function startFromDescription() {
+  const desc = document.getElementById("site-desc").value.trim();
+  if (desc.length < 10) return;
+  STEP = 1; renderLoading();
+  try {
+    const r = await fetch(API + "/api/icp/from-description", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: desc }),
+    });
+    const data = await r.json();
+    ICP = data.icp; PROMPT = data.prompt;
+    finishLoadingBar();
+    await new Promise(res => setTimeout(res, 350));
+    STEP = 2; renderRoles();
+  } catch (e) {
+    clearInterval(_loadingTimer);
+    card(`<h1>Something went wrong</h1><p class="sub">${e.message}</p>`);
+  }
+}
+
+function tagToggle(listKey, value) {
+  const i = ICP[listKey].indexOf(value);
+  if (i === -1) ICP[listKey].push(value); else ICP[listKey].splice(i, 1);
+}
+
+function renderTagGroup(label, listKey, allOptions) {
+  const chosen = new Set(ICP[listKey]);
+  const options = Array.from(new Set([...allOptions, ...ICP[listKey]]));
+  return `
+    <div class="field">
+      <label>${label}</label>
+      <div class="tags">
+        ${options.map(o => `<span class="tag ${chosen.has(o) ? "on" : ""}" onclick="tagToggle('${listKey}','${o.replace(/'/g,"\\'")}'); renderCurrent();">${o}</span>`).join("")}
+      </div>
+    </div>`;
+}
+
+function renderFreeTagGroup(label, listKey, placeholder) {
+  return `
+    <div class="field">
+      <label>${label}</label>
+      <div class="tags" id="tags-${listKey}">
+        ${ICP[listKey].map(o => `<span class="tag on">${o} <span class="x" onclick="removeTag('${listKey}','${o.replace(/'/g,"\\'")}')">×</span></span>`).join("")}
+        <input class="add-input" placeholder="${placeholder}" onkeydown="if(event.key==='Enter'){addTag('${listKey}', this.value); this.value='';}" />
+      </div>
+    </div>`;
+}
+
+function addTag(listKey, value) {
+  value = value.trim();
+  if (!value) return;
+  if (!ICP[listKey].includes(value)) ICP[listKey].push(value);
+  renderCurrent();
+}
+function removeTag(listKey, value) {
+  ICP[listKey] = ICP[listKey].filter(v => v !== value);
+  renderCurrent();
+}
+
+function renderCurrent() {
+  if (STEP === 2) renderRoles();
+  else if (STEP === 3) renderCompanies();
+  else if (STEP === 4) renderExclusions();
+  else if (STEP === 5) renderReview();
+}
+
+function renderRoles() {
+  renderSteps(2);
+  card(`
+    <div class="ai-badge">AI-generated</div>
+    <h1>Who's your ideal customer?</h1>
+    <p class="sub">We pre-filled this based on your website — adjust or add if needed.</p>
+    ${renderFreeTagGroup("Job roles", "job_roles", "+ Add role")}
+    <div class="nav">
+      <button class="btn-ghost" onclick="renderUrlEntry()">← Previous</button>
+      <button class="btn-primary" onclick="STEP=3; renderCompanies();">Next step →</button>
+    </div>
+  `);
+}
+
+const INDUSTRY_OPTS = ["Technology", "Finance", "Real Estate", "Healthcare", "E-commerce", "Manufacturing", "Education"];
+const LOCATION_OPTS = ["United States", "United Kingdom", "Canada", "Australia", "Germany", "India"];
+const TYPE_OPTS = ["Startup", "Private Company", "Public Company", "Non-profit", "Government", "Educational Institution", "Other"];
+const SIZE_OPTS = ["1-10 employees", "11-50 employees", "51-200 employees", "201-500 employees", "501-1000 employees", "1001-5000 employees", "5001-10000 employees", "10000+ employees"];
+
+function renderCompanies() {
+  renderSteps(3);
+  card(`
+    <div class="ai-badge">AI-generated</div>
+    <h1>What kind of companies are you targeting?</h1>
+    <p class="sub">We pre-filled this based on your website — adjust or add if needed.</p>
+    ${renderTagGroup("Industry", "industries", INDUSTRY_OPTS)}
+    ${renderTagGroup("Location", "locations", LOCATION_OPTS)}
+    ${renderTagGroup("Company type", "company_types", TYPE_OPTS)}
+    ${renderTagGroup("Company size", "company_sizes", SIZE_OPTS)}
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=2; renderRoles();">← Previous</button>
+      <button class="btn-primary" onclick="STEP=4; renderExclusions();">Next step →</button>
+    </div>
+  `);
+}
+
+function renderExclusions() {
+  renderSteps(4);
+  card(`
+    <div class="ai-badge">AI-generated</div>
+    <h1>Who should we exclude?</h1>
+    <p class="sub">We pre-filled this based on your website — adjust or add if needed.</p>
+    ${renderFreeTagGroup("Exclude these profiles", "excluded_profiles", "+ Add")}
+    ${renderFreeTagGroup("Companies &amp; keywords to avoid", "excluded_keywords", "e.g. Salesforce")}
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=3; renderCompanies();">← Previous</button>
+      <button class="btn-primary" onclick="STEP=5; renderReview();">Next step →</button>
+    </div>
+  `);
+}
+
+function renderReview() {
+  renderSteps(5);
+  const rows = [
+    ["Job roles", ICP.job_roles.join(", ")],
+    ["Industries", ICP.industries.join(", ")],
+    ["Company type", ICP.company_types.join(", ")],
+    ["Company size", ICP.company_sizes.join(", ")],
+    ["Locations", ICP.locations.join(", ")],
+    ["Excluded", ICP.excluded_profiles.join(", ") || "—"],
+    ["Competitors/keywords", ICP.excluded_keywords.join(", ") || "—"],
+  ];
+  card(`
+    <h1>Check your ICP before previewing leads</h1>
+    <p class="sub">Your AI agent will use this profile to detect and surface high-intent leads.</p>
+    ${rows.map(([k,v]) => `<div class="review-row"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=4; renderExclusions();">← Previous</button>
+      <button class="btn-primary" onclick="renderConfirmed();">Confirm &amp; preview leads →</button>
+    </div>
+  `);
+}
+
+function renderConfirmed() {
+  renderSteps(7);
+  card(`
+    <h1>ICP confirmed ✓</h1>
+    <p class="sub">This is what gets handed to the outreach pipeline (outreach/prospect.py's find_leads).</p>
+    <div class="result-box">${PROMPT}</div>
+    <div class="nav" style="justify-content:center;">
+      <button class="btn-primary" onclick="renderUrlEntry()">Start over</button>
+    </div>
+  `);
+}
+
+renderUrlEntry();
+</script>
+</body>
+</html>
