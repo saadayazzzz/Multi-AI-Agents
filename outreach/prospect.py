@@ -208,8 +208,113 @@ _QUERY_GROUPS = [
 ]
 
 
+# Plain keyword phrases for LinkedIn's own search UI (used by the scrape
+# path below) - its search doesn't reliably honour boolean OR the way a web
+# search engine does, so these are kept as simple phrases, one query each.
+_SCRAPE_QUERIES = [
+    "founder hiring is chaos",
+    "CEO drowning in spreadsheets manual",
+    "founder need to automate manual process",
+    "solo founder wearing every hat systems",
+    "startup founder scaling too fast understaffed",
+    "CEO manual work repetitive tasks AI agent",
+    "founder operations chaos no systems",
+    "small business owner overwhelmed manual processes",
+]
+
+
+def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
+    """The real-time path: search LinkedIn's own UI (sorted by Latest) via
+    the user's logged-in session - see linkedin_scrape.py for why this is
+    used at all despite the ToS risk, and why it solves recency better than
+    a public search index ever can (LinkedIn's own UI exposes an exact
+    timestamp for content only a logged-in viewer can rank as newest)."""
+    from outreach import linkedin_scrape as scrape
+
+    posts, seen = [], set()
+    for q in _SCRAPE_QUERIES:
+        try:
+            results = scrape.search_recent_posts(q, max_posts=15)
+        except Exception as e:  # noqa: BLE001 - one slow/failed query shouldn't sink the batch
+            report(f"  LinkedIn search for '{q}' failed ({e}) - skipping", kind="status")
+            continue
+        for p in results:
+            if p["post_url"] in seen:
+                continue
+            seen.add(p["post_url"])
+            if p.get("age_days") is not None and p["age_days"] <= MAX_AGE_DAYS:
+                posts.append(p)
+    if not posts:
+        return []
+
+    notes = "\n\n---\n\n".join(
+        f"Author: {p['author']}\nProfile: {p.get('profile_url') or ''}\n"
+        f"Post URL: {p['post_url']}\nPosted: {p['age_days']} days ago\n"
+        f"Text: {p['text']}"
+        for p in posts
+    )
+    data = json_out(
+        _SYS,
+        f"Extract ONLY people/companies explicitly named in the notes below - "
+        f"do not invent or infer anything not literally mentioned there. Score "
+        f"icp_fit against this target profile (0 if it's a poor match): {icp}\n\n"
+        f"For linkedin_url use the exact 'Post URL' given for that person. For "
+        f"posted_when use the exact 'Posted' value given, verbatim.\n\n" + notes,
+        _SCHEMA,
+        max_tokens=7000,
+    )
+    out: list[dict] = []
+    dropped_bad_domain = 0
+    for c in data["companies"]:
+        dom = c["domain"].lower().strip().replace("https://", "").replace("http://", "")
+        dom = dom.replace("www.", "").strip("/")
+        if not dom or dom in exclude or dom in {o["domain"] for o in out}:
+            continue
+        url = (c.get("linkedin_url") or "").strip()
+        if not url or not _LINKEDIN_URL_RE.match(url):
+            continue
+        if not _domain_is_real(dom):
+            dropped_bad_domain += 1
+            continue
+        out.append({**c, "domain": dom, "linkedin_url": url})
+        if len(out) >= n:
+            break
+    if dropped_bad_domain:
+        report(
+            f"  dropped {dropped_bad_domain} unverifiable/fabricated companies "
+            f"(live LinkedIn search path)",
+            kind="status",
+        )
+    return out
+
+
 def find_leads(icp: str, n: int = 10, exclude: set[str] | None = None) -> list[dict]:
     exclude = exclude or set()
+
+    from outreach import linkedin_scrape as scrape
+
+    if scrape.has_session():
+        try:
+            leads = _find_via_scrape(icp, n, exclude)
+            if leads:
+                report(
+                    f"  found {len(leads)} via live LinkedIn session search "
+                    f"(real timestamps, sorted by Latest)",
+                    kind="status",
+                )
+                return leads
+            report(
+                "  live LinkedIn session search found nothing within the "
+                f"{MAX_AGE_DAYS}-day window - falling back to public search index",
+                kind="status",
+            )
+        except Exception as e:  # noqa: BLE001 - never let this crash the cycle
+            report(
+                f"  live LinkedIn session search failed ({e}) - falling back "
+                f"to public search index",
+                kind="status",
+            )
+
     all_notes = []
     for group in _QUERY_GROUPS:
         query = f"site:linkedin.com/posts (CEO OR founder) ({group})"

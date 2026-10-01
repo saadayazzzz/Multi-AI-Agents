@@ -2,6 +2,8 @@
 .env
 .env.local
 dashboard/.env.local
+outreach/linkedin_scraper/session.json
+outreach/linkedin_scraper/node_modules/
 
 # python
 __pycache__/
@@ -25,3 +27,4 @@ leads.xlsx
 *.xlsx
 youtube_client_secret.json
 youtube_token.json
+recording/
