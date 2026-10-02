@@ -34,6 +34,17 @@ app.add_middleware(
 
 _ACTORS = ["orchestrator", "agent5", "geo", "sales"]
 
+# Sales engine (Gojiberry-equivalent): REST API + its own console at /sales.
+from pathlib import Path  # noqa: E402
+
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+from sales.api import router as sales_router  # noqa: E402
+
+app.include_router(sales_router)
+app.mount("/sales", StaticFiles(directory=str(Path(__file__).resolve().parent.parent / "sales" / "static"),
+                                html=True), name="sales-console")
+
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -46,6 +57,9 @@ def _startup() -> None:
 
     init_geo_db()
     init_outreach_db()
+    from sales.db import init_sales_db
+
+    init_sales_db()
 
 
 # --------------------------------------------------------------------------- #

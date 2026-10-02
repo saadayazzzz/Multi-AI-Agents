@@ -121,6 +121,60 @@ python geo_cli.py new-project --account jarvis --brand acme --category "SEO tool
 python outreach_cli.py campaign --name jarvis --icp "..." --offer "..."
 ```
 
+## Sales engine (self-hosted Gojiberry)
+
+`sales/` is a self-hosted version of Gojiberry's data model and workflow,
+built from what their own MCP API shows: **source agents** find and score
+leads into **lists**, **campaign agents** run LinkedIn + email sequences
+against those lists, and every reply lands in the **unibox**.
+
+```bash
+python -m sales.server       # console + API on :8092 (also served by the main server at /sales)
+python -m sales.scheduler    # keeps agents sourcing and campaigns sending on their own
+cd outreach/linkedin_scraper && npm install   # once: playwright-core for LinkedIn seats
+```
+
+Open <http://localhost:8092/sales/>. Then:
+
+1. **Settings**: add a LinkedIn seat and click *Log in*. A real Chrome window
+   opens; sign in by hand, and only the session cookies are kept. Add a
+   Gmail/Outlook mailbox with an app password.
+2. **Agents → New agent**: build the ICP from your website, pick 4-15
+   signals and write your offer. This creates a list, a source agent and an
+   inactive campaign together (Gojiberry's "Full Cycle").
+3. Activate the campaign once you've checked the sequence. The scheduler
+   sends on the campaign's active days, from its launch hour, within each
+   seat's daily caps.
+
+| Gojiberry | Here |
+|---|---|
+| Source agent (ICP, `minLeadScore`, `leadWaterfall`, ignored companies, mandatory keywords, service-provider and open-to-work filters, pause) | `sales/agents.py`, `sales/runner.py` |
+| 17 signal types (`SEARCH_KEYWORD*`, `EVENT_KEYWORD`, `GROUP_KEYWORD`, competitor/influencer/company pages, profile visitors, followers, `RECENT_ACTIVITY`, `RECENTLY_CHANGED_JOB`, `RECENT_FUNDING_EVENT`, `HIRING`, `TECHNOLOGY`) | `sales/signals.py`. LinkedIn signals read through your seat; funding, hiring and technology come from live web search |
+| Lookalike and website-visitor agents | `sales/runner.py`, `sales/tracking.py` (tracking snippet plus reverse-IP company match) |
+| Lead score 0-3 | `sales/scoring.py`: persona + company (LLM) + intent (signal strength × freshness) |
+| Agent logs | `sales_agent_runs`, one row per signal run with found / duplicates / filtered / below-score / imported |
+| Lists, contacts, CSV import, reject/unreject | `sales/lists.py` |
+| Campaign agent: 7 step types, step-order rules, delays, AI or template messages with `[FirstName]` `[LastName]` `[Company]`, `skipInvitationAfterDays`, exclude 1st-degree, split messages, launch hour, active days | `sales/campaigns.py`, `sales/executor.py`, `sales/writer.py` |
+| Email seats, warm-up, open tracking, unsubscribe | `sales/emailer.py` (SMTP/IMAP, volume ramp, pixel, one-click unsubscribe, bounce handling) |
+| Email and phone enrichment | `sales/enrich.py`: Hunter or Apollo if configured, otherwise a pattern guess on a domain with valid MX |
+| Lead and company directory (search masked, reveal into a list) | `sales/directory.py`: your own workspace, or a live LinkedIn people search |
+| Unibox (threads, interested/seen, reply) | `sales/unibox.py`. A reply stops that contact's remaining steps |
+| Reply rate | `campaign_stats()`, using Gojiberry's own definition |
+
+**LinkedIn automation is opt-in, per seat.** Automated invitations, messages,
+likes and profile visits break LinkedIn's terms, and accounts get
+restricted. On a seat without automation, every LinkedIn step becomes a
+**task** with the drafted text, and you do it yourself in one click
+(Gojiberry's manual campaigns work the same way). Reading through a seat for
+signals, acceptances and the inbox is always on.
+
+Not included: Gojiberry's shared pool of pre-indexed leads (the directory
+searches your own workspace or LinkedIn live), a real warm-up network (you
+get a volume ramp instead), credits, and multi-user organisations.
+
+Tests: `pip install pytest && pytest tests/` (needs a local Postgres; set
+`TEST_DATABASE_URL` if it isn't on `127.0.0.1:5432`).
+
 ## Layout
 
 ```
@@ -167,7 +221,9 @@ Publishing to LinkedIn/Instagram/YouTube always requires your explicit
 approval in the conversation — nothing posts or uploads on its own. YouTube
 uploads default to **unlisted** with an AI-generated-content disclosure in
 the description; review before making anything public. Outreach emails are
-gated behind SMTP configuration and honour a suppression list; LinkedIn
-outreach stays human-driven (no automated DMs/connection requests — that's a
-ToS/ban risk). Cyber assessments (on `cyber_jarvis`) run only against
+gated behind SMTP configuration and honour a suppression list. In the sales
+engine, LinkedIn write actions (invitations, DMs, likes) only run on a seat
+where you've turned automation on, within daily caps. Without it, they
+become manual tasks, because automating LinkedIn breaks its terms and risks
+a ban. Cyber assessments (on `cyber_jarvis`) run only against
 explicitly authorized targets.

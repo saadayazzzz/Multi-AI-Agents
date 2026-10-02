@@ -1,0 +1,8 @@
+{
+  "name": "linkedin-scraper",
+  "private": true,
+  "description": "Playwright bridge used by outreach/linkedin_scrape.py and sales/linkedin.py",
+  "dependencies": {
+    "playwright-core": "^1.47.0"
+  }
+}

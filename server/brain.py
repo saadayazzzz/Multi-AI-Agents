@@ -105,6 +105,26 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "sales_engine",
+        "description": "The Gojiberry-style sales engine (sales/): source agents that "
+        "find and score leads from LinkedIn/web signals into lists, and campaigns that "
+        "run LinkedIn + email sequences against those lists. action=status for a "
+        "summary (leads, replies, open manual tasks, unread threads); run_agents to run "
+        "source agents now (all, or agent_id); run_campaigns to process due steps of "
+        "campaigns that are ALREADY active (never activates one); sync_inbox to pull "
+        "new replies. Use for 'how are my agents doing', 'find more leads now', "
+        "'any replies?', 'run my campaigns'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["status", "run_agents", "run_campaigns", "sync_inbox"]},
+                "agent_id": {"type": "integer"},
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "market_pulse",
         "description": "Run Agent 1: pull the latest AI-search / GEO industry developments "
         "via web search into the live feed (answer-engine changes, adoption shifts, GEO "
@@ -141,6 +161,7 @@ _ACTOR_FOR = {
     "market_pulse": "agent5",
     "check_ai_visibility": "geo",
     "run_outreach": "sales",
+    "sales_engine": "sales",
 }
 
 
@@ -242,6 +263,8 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
                 f"share-of-voice {sc['share_of_voice']:.0%}. "
                 f"Top competitors by mentions: {comp}."
             )
+        if name == "sales_engine":
+            return _sales_engine(args)
         if name == "get_status":
             return _status_text()
         if name == "schedule_recurring":
@@ -256,6 +279,34 @@ def _run_tool(name: str, args: dict[str, Any]) -> str:
         return f"Unknown tool: {name}"
     finally:
         set_actor("orchestrator")
+
+
+def _sales_engine(args: dict[str, Any]) -> str:
+    from sales import executor, runner
+    from sales.api import overview
+    from sales.db import init_sales_db
+    from sales.scheduler import sync_all_inboxes
+
+    init_sales_db()
+    action = args["action"]
+    if action == "run_agents":
+        if args.get("agent_id"):
+            ids = [args["agent_id"]]
+        else:
+            with get_conn() as conn:
+                ids = [r["id"] for r in conn.execute("SELECT id FROM source_agents WHERE NOT paused").fetchall()]
+        res = [runner.run_agent(i, force=bool(args.get("agent_id"))) for i in ids]
+        return f"Ran {len(res)} source agent(s): {sum(r.get('imported', 0) for r in res)} new leads imported."
+    if action == "run_campaigns":
+        res = [executor.tick(i) for i in executor.active_campaign_ids()]
+        done = sum(sum(r.get("steps", {}).values()) for r in res)
+        return f"Processed {len(res)} active campaign(s): {done} steps handled ({res})."
+    if action == "sync_inbox":
+        return f"Inbox synced: {sync_all_inboxes()}"
+    o = overview()
+    return (f"Sales engine: {o['contacts']} leads ({o['leads_7d']} this week), {o['agents_active']} agents "
+            f"running, {o['campaigns_active']} campaigns active, {o['contacted']} contacted, "
+            f"{o['replied']} replied, {o['manual_tasks']} manual tasks open, {o['unread_threads']} unread threads.")
 
 
 def _execute(name: str, args: dict[str, Any]) -> tuple[str, bool]:
