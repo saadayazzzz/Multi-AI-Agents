@@ -131,6 +131,106 @@ def build_icp_from_description(description: str) -> dict:
     return draft
 
 
+def find_candidate_leads(icp_prompt: str, n: int = 5) -> list[dict]:
+    """Preview step - runs the REAL prospecting pipeline (live LinkedIn
+    session search when available, public-search fallback otherwise) so
+    what the wizard previews is genuinely what would get added, not a
+    mock. Nothing is written to the database yet."""
+    from outreach.prospect import find_leads
+
+    return find_leads(icp_prompt, n=n)
+
+
+def launch_campaign(
+    website_url: str,
+    icp_prompt: str,
+    offer: str,
+    accepted_leads: list[dict],
+    icp: dict | None = None,
+    keywords: list[str] | None = None,
+    tone: str = "professional",
+    goal: str = "warm",
+) -> dict:
+    """Confirm step - create a real Source Agent + Campaign Agent pair
+    (outreach/agents.py - the two-entity model confirmed from Gojiberry's
+    own MCP API) plus the underlying campaign row, then run the accepted
+    leads through the same enrich -> score -> draft -> Notion-sync pipeline
+    outreach/pipeline.py's run_cycle uses, reusing its own helpers so
+    behaviour never drifts from the one true pipeline."""
+    from db import get_conn
+    from geo.db import init_geo_db
+    from outreach.agents import create_campaign_agent, create_source_agent
+    from outreach.db import init_outreach_db
+    from outreach.excel import export_xlsx
+    from outreach.pipeline import (
+        _campaign,
+        _draft,
+        _enrich,
+        _for_status,
+        _sync_notion,
+        create_campaign,
+    )
+    from server.linkedin_oauth import connected_identity
+
+    init_geo_db()
+    init_outreach_db()
+    name_, email_ = connected_identity()
+    cid = create_campaign(
+        f"icp-builder:{website_url}", icp_prompt, offer, name_ or "Saad", email_, 20,
+    )
+    camp = _campaign(cid)
+
+    icp = icp or {}
+    saved_id = create_source_agent(
+        name=f"icp-builder:{website_url}",
+        job_titles=icp.get("job_roles") or [],
+        industries=icp.get("industries") or [],
+        company_sizes=icp.get("company_sizes") or [],
+        locations=icp.get("locations") or [],
+        company_types=icp.get("company_types") or [],
+        keywords=keywords or [],
+        ignored_companies=icp.get("excluded_keywords") or [],
+        campaign_id=cid,
+    )
+    campaign_agent_id = create_campaign_agent(campaign_id=cid, tone=tone, goal=goal)
+    with get_conn() as conn:
+        for c in accepted_leads:
+            conn.execute(
+                """
+                INSERT INTO leads (campaign_id, company, domain, industry, icp_fit, trigger,
+                    contact_name, contact_role, linkedin_url, linkedin_activity)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (campaign_id, domain) DO NOTHING
+                """,
+                (cid, c["company"], c["domain"], c.get("industry"), c.get("icp_fit"),
+                 c.get("trigger"), c.get("contact_name"), c.get("contact_role"),
+                 c.get("linkedin_url"), c.get("posted_when")),
+            )
+    _for_status(cid, "new", lambda lead: _enrich(lead))
+    _for_status(cid, "enriched", lambda lead: lead)  # skip geo-score here (slow, optional)
+    with get_conn() as conn:
+        conn.execute("UPDATE leads SET status='scored' WHERE campaign_id=%s AND status='enriched'", (cid,))
+    _for_status(cid, "scored", lambda lead: _draft(lead, camp))
+    synced = _sync_notion(cid)
+    path = export_xlsx(cid, "leads.xlsx")
+    with get_conn() as conn:
+        counts = {
+            r["status"]: r["n"]
+            for r in conn.execute(
+                "SELECT status, COUNT(*) n FROM leads WHERE campaign_id = %s GROUP BY status",
+                (cid,),
+            ).fetchall()
+        }
+    return {
+        "campaign_id": cid,
+        "source_agent_id": saved_id,
+        "campaign_agent_id": campaign_agent_id,
+        "synced": synced,
+        "xlsx": str(path),
+        "pipeline": counts,
+    }
+
+
 def icp_to_prompt_string(icp: dict) -> str:
     """Collapse the structured ICP back into the single-string shape
     outreach/prospect.py's find_leads(icp, ...) already expects."""

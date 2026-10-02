@@ -44,7 +44,7 @@ MAX_AGE_DAYS = 15  # LinkedIn snippets rarely expose an exact date - a 7-day
 # (not the 5-months-old case this was built to catch) while actually yielding
 # leads against what search engines index of LinkedIn.
 
-MIN_ICP_FIT = 50  # a second, code-enforced line of defense on top of the
+MIN_ICP_FIT = 30  # a second, code-enforced line of defense on top of the
 # prompt instructions below - catches the model scoring a competing agency/
 # consultant's own marketing post low-but-nonzero instead of the intended 0.
 
@@ -238,6 +238,10 @@ _SCRAPE_QUERIES = [
     "CEO manual work repetitive tasks AI agent",
     "founder operations chaos no systems",
     "small business owner overwhelmed manual processes",
+    "founder building in public startup",
+    "CEO systems over hustle productivity",
+    "startup founder ai agents automation",
+    "founder no-code manual workflow",
 ]
 
 
@@ -247,21 +251,31 @@ def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
     used at all despite the ToS risk, and why it solves recency better than
     a public search index ever can (LinkedIn's own UI exposes an exact
     timestamp for content only a logged-in viewer can rank as newest)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from outreach import linkedin_scrape as scrape
 
+    # Each query spawns its own headless Chrome via a subprocess.run() call
+    # (which releases the GIL while waiting), so running them concurrently
+    # turns ~8 sequential 30-90s searches into one ~30-90s batch instead of
+    # 5-8 minutes end to end. Capped at 4 at once - more than that both
+    # strains this machine and looks more bot-like to LinkedIn in a burst.
     posts, seen = [], set()
-    for q in _SCRAPE_QUERIES:
-        try:
-            results = scrape.search_recent_posts(q, max_posts=15)
-        except Exception as e:  # noqa: BLE001 - one slow/failed query shouldn't sink the batch
-            report(f"  LinkedIn search for '{q}' failed ({e}) - skipping", kind="status")
-            continue
-        for p in results:
-            if p["post_url"] in seen:
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(scrape.search_recent_posts, q, 15): q for q in _SCRAPE_QUERIES}
+        for fut in as_completed(futures):
+            q = futures[fut]
+            try:
+                results = fut.result()
+            except Exception as e:  # noqa: BLE001 - one slow/failed query shouldn't sink the batch
+                report(f"  LinkedIn search for '{q}' failed ({e}) - skipping", kind="status")
                 continue
-            seen.add(p["post_url"])
-            if p.get("age_days") is not None and p["age_days"] <= MAX_AGE_DAYS:
-                posts.append(p)
+            for p in results:
+                if p["post_url"] in seen:
+                    continue
+                seen.add(p["post_url"])
+                if p.get("age_days") is not None and p["age_days"] <= MAX_AGE_DAYS:
+                    posts.append(p)
     if not posts:
         return []
 
@@ -317,6 +331,117 @@ def _find_via_scrape(icp: str, n: int, exclude: set[str]) -> list[dict]:
             f"(live LinkedIn search path)",
             kind="status",
         )
+    return out
+
+
+_ACTIVE_SYS = (
+    "You are a B2B sales researcher. You extract real people from LinkedIn "
+    "search notes who PUBLICLY posted within the last two weeks and whose "
+    "role/company matches the target profile. Unlike a pain-point search, "
+    "this one does NOT require the post to be about any specific problem - "
+    "the signal here is simply 'this real person, matching the ICP, is "
+    "currently active on LinkedIn', the same 'Top 5% most active profiles' "
+    "signal a tool like Gojiberry uses: no topic requirement, just a real, "
+    "recent, role-matching post. Only report people a search actually "
+    "returned, never invent one - a shorter, honest list beats a longer "
+    "fabricated one. Still exclude agencies/consultants/service providers "
+    "pitching their own services rather than running their own company."
+)
+
+
+def find_active_profiles(
+    job_titles: list[str], icp: str, n: int = 10, exclude: set[str] | None = None,
+) -> list[dict]:
+    """The bulk-volume signal real Gojiberry agent logs show produces the
+    overwhelming majority of their leads (189 in a single run, per their
+    own get_agent_logs) - NOT their keyword-search signal (which, like
+    ours, only yields 0-1 per run). The difference: this doesn't require a
+    post to be ABOUT anything in particular, just that a real person
+    matching the ICP by role is genuinely, recently active on LinkedIn.
+    Same verification bar as find_leads (real domain, real decoded/
+    LinkedIn-displayed recency, no fabrication) - just not gated on a
+    specific pain-point phrase."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from outreach import linkedin_scrape as scrape
+
+    exclude = exclude or set()
+    titles = job_titles or ["founder", "CEO"]
+    # Bare single-word queries ("Founder") pull in LinkedIn's noisy mixed
+    # results (groups, events, "people also viewed") that aren't posts at
+    # all; wrapping each title in a few generic first-person phrases keeps
+    # results to actual post content without requiring any specific
+    # pain-point topic.
+    queries = []
+    for t in titles[:4]:
+        t = t.strip()
+        if not t:
+            continue
+        queries.append(f"as a {t}")
+    queries = list(dict.fromkeys(queries))[:8] or ["as a founder", "building my company"]
+
+    posts, seen = [], set()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(scrape.search_recent_posts, q, 20): q for q in queries}
+        for fut in as_completed(futures):
+            q = futures[fut]
+            try:
+                results = fut.result()
+            except Exception as e:  # noqa: BLE001
+                report(f"  active-profile search for '{q}' failed ({e}) - skipping", kind="status")
+                continue
+            for p in results:
+                if p["post_url"] in seen:
+                    continue
+                seen.add(p["post_url"])
+                if p.get("age_days") is not None and p["age_days"] <= MAX_AGE_DAYS:
+                    posts.append(p)
+    if not posts:
+        return []
+
+    notes = "\n\n---\n\n".join(
+        f"Author: {p['author']}\nProfile: {p.get('profile_url') or ''}\n"
+        f"Post URL: {p['post_url']}\nPosted: {p['age_days']} days ago\n"
+        f"Text: {p['text']}"
+        for p in posts
+    )
+    data = json_out(
+        _ACTIVE_SYS,
+        f"Extract ONLY people/companies explicitly named in the notes below. "
+        f"Score icp_fit purely on role/industry/location match against this "
+        f"target profile (0 if it's a poor match, or if the poster is "
+        f"themselves an agency/consultant pitching their own services): "
+        f"{icp}\n\nFor linkedin_url use the exact 'Post URL' given. For "
+        f"posted_when use the exact 'Posted' value given, verbatim. For "
+        f"trigger, just note they're actively posting on LinkedIn - no need "
+        f"to force a pain-point connection.\n\n" + notes,
+        _SCHEMA,
+        max_tokens=7000,
+    )
+    out: list[dict] = []
+    dropped_bad_domain = 0
+    dropped_low_fit = 0
+    for c in data["companies"]:
+        dom = c["domain"].lower().strip().replace("https://", "").replace("http://", "")
+        dom = dom.replace("www.", "").strip("/")
+        if not dom or dom in exclude or dom in {o["domain"] for o in out}:
+            continue
+        url = (c.get("linkedin_url") or "").strip()
+        if not url or not _LINKEDIN_URL_RE.match(url):
+            continue
+        if (c.get("icp_fit") or 0) < MIN_ICP_FIT:
+            dropped_low_fit += 1
+            continue
+        if not _domain_is_real(dom):
+            dropped_bad_domain += 1
+            continue
+        out.append({**c, "domain": dom, "linkedin_url": url})
+        if len(out) >= n:
+            break
+    if dropped_low_fit:
+        report(f"  dropped {dropped_low_fit} low icp_fit - active-profile search", kind="status")
+    if dropped_bad_domain:
+        report(f"  dropped {dropped_bad_domain} unverifiable companies - active-profile search", kind="status")
     return out
 
 

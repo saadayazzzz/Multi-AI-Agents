@@ -432,16 +432,158 @@ function renderReview() {
   `);
 }
 
-function renderConfirmed() {
-  renderSteps(7);
+// ---- Goals & tone ----
+let GOALS = { pain_points: "", campaign_goal: "warm", tone: "professional" };
+
+function renderGoals() {
+  renderSteps(6);
   card(`
-    <h1>ICP confirmed ✓</h1>
-    <p class="sub">This is what gets handed to the outreach pipeline (outreach/prospect.py's find_leads).</p>
-    <div class="result-box">${PROMPT}</div>
-    <div class="nav" style="justify-content:center;">
-      <button class="btn-primary" onclick="renderUrlEntry()">Start over</button>
+    <h1>Goals</h1>
+    <p class="sub">We'll craft your outreach around your goals and your audience's pain points.</p>
+    <div class="field">
+      <label>Customers' pain points</label>
+      <textarea id="pain-points">${GOALS.pain_points || "Teams drowning in manual, repetitive work with no time to build in-house automation."}</textarea>
+    </div>
+    <div class="field">
+      <label>Campaign goal</label>
+      <div class="tags">
+        <span class="tag ${GOALS.campaign_goal==='warm'?'on':''}" onclick="GOALS.campaign_goal='warm'; renderGoals();">Start conversations with warm prospects</span>
+        <span class="tag ${GOALS.campaign_goal==='calls'?'on':''}" onclick="GOALS.campaign_goal='calls'; renderGoals();">Book qualified sales calls/demos</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Message tone</label>
+      <div class="tags">
+        <span class="tag ${GOALS.tone==='professional'?'on':''}" onclick="GOALS.tone='professional'; renderGoals();">Professional</span>
+        <span class="tag ${GOALS.tone==='conversational'?'on':''}" onclick="GOALS.tone='conversational'; renderGoals();">Conversational</span>
+        <span class="tag ${GOALS.tone==='direct'?'on':''}" onclick="GOALS.tone='direct'; renderGoals();">Direct</span>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=5; renderReview();">← Previous</button>
+      <button class="btn-primary" onclick="GOALS.pain_points=document.getElementById('pain-points').value; STEP=6.5; renderSignals();">Next step →</button>
     </div>
   `);
+}
+
+// ---- Signals ----
+let SIGNALS = { top_active: true, keyword_engagement: true, job_changes: false, funding: false };
+const KEYWORD_SUGGESTIONS = ["ai agents", "manual process", "automation", "scaling fast", "hiring chaos"];
+let KEYWORDS = [];
+
+function sigToggle(key) { SIGNALS[key] = !SIGNALS[key]; renderSignals(); }
+
+function renderSignals() {
+  renderSteps(6);
+  card(`
+    <div class="ai-badge">Live, real data</div>
+    <h1>Which signals should we track?</h1>
+    <p class="sub">These are the strongest intent triggers we can actually detect right now.</p>
+    <div class="field">
+      <div class="tags" style="flex-direction:column; align-items:stretch; gap:10px;">
+        <span class="tag ${SIGNALS.top_active?'on':''}" style="justify-content:space-between; display:flex;" onclick="sigToggle('top_active')">Top active LinkedIn profiles, sorted by Latest ${SIGNALS.top_active?'✓':''}</span>
+        <span class="tag ${SIGNALS.keyword_engagement?'on':''}" style="justify-content:space-between; display:flex;" onclick="sigToggle('keyword_engagement')">Keyword engagement (posts mentioning your pain points) ${SIGNALS.keyword_engagement?'✓':''}</span>
+        <span class="tag" style="opacity:0.45; cursor:not-allowed; justify-content:space-between; display:flex;" title="Needs a funding database (e.g. Crunchbase) we don't have wired up yet">Recent job changes (&lt;90 days) — coming soon, needs a data source we don't have yet</span>
+        <span class="tag" style="opacity:0.45; cursor:not-allowed; justify-content:space-between; display:flex;" title="Needs a funding database we don't have wired up yet">Companies that recently raised funds — coming soon, needs a data source we don't have yet</span>
+      </div>
+    </div>
+    ${SIGNALS.keyword_engagement ? `
+    <div class="field">
+      <label>Keywords to track</label>
+      <div class="tags" id="tags-kw">
+        ${KEYWORDS.map(k => `<span class="tag on">${k} <span class="x" onclick="KEYWORDS=KEYWORDS.filter(v=>v!=='${k}'); renderSignals();">×</span></span>`).join("")}
+        ${KEYWORD_SUGGESTIONS.filter(k=>!KEYWORDS.includes(k)).map(k => `<span class="tag" onclick="KEYWORDS.push('${k}'); renderSignals();">+ ${k}</span>`).join("")}
+      </div>
+    </div>` : ""}
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=6; renderGoals();">← Previous</button>
+      <button class="btn-primary" onclick="STEP=7; renderPreviewLoading();">Preview my first leads →</button>
+    </div>
+  `);
+}
+
+// ---- Real preview (calls the actual pipeline) ----
+let CANDIDATE_LEADS = [];
+let REJECTED = new Set();
+
+async function renderPreviewLoading() {
+  renderSteps(8);
+  card(`
+    <h1>Scanning LinkedIn for real signals</h1>
+    <p class="sub">Searching live, sorted by Latest — this genuinely takes a minute or two, no shortcuts.</p>
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div class="loading-sub">Hang tight — this is calling the real pipeline, not a demo.</div>
+    </div>
+  `);
+  try {
+    const r = await fetch(API + "/api/icp/find-leads", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ icp_prompt: PROMPT, n: 5 }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || "search failed");
+    const data = await r.json();
+    CANDIDATE_LEADS = data.leads || [];
+    REJECTED = new Set();
+    renderOpportunities();
+  } catch (e) {
+    card(`<h1>Search failed</h1><p class="sub">${e.message}</p><div class="nav" style="justify-content:center"><button class="btn-primary" onclick="STEP=6; renderSignals();">← Back</button></div>`);
+  }
+}
+
+function renderOpportunities() {
+  renderSteps(8);
+  const live = CANDIDATE_LEADS.filter((_, i) => !REJECTED.has(i));
+  card(`
+    <h1>${CANDIDATE_LEADS.length ? "Here are the opportunities we found" : "No real, verified leads right now"}</h1>
+    <p class="sub">${CANDIDATE_LEADS.length ? "Real LinkedIn posts, domain-verified. Nothing is contacted until you launch." : "The strict verification (real recent post + real domain) didn't clear anyone this run — that's honest, not broken. Try again shortly."}</p>
+    ${CANDIDATE_LEADS.map((l, i) => REJECTED.has(i) ? "" : `
+      <div class="review-row">
+        <div>
+          <div style="font-weight:700;">${l.contact_name || l.company}</div>
+          <div style="color:var(--muted); font-size:12.5px;">${l.contact_role || ""} · ${l.company} · ${l.industry || ""}</div>
+          <div style="color:var(--muted); font-size:12px; margin-top:4px;">${l.trigger ? l.trigger.slice(0,140) : ""}${l.trigger && l.trigger.length>140?"…":""}</div>
+        </div>
+        <button class="btn-ghost" onclick="REJECTED.add(${i}); renderOpportunities();">× Reject</button>
+      </div>
+    `).join("")}
+    <div class="nav">
+      <button class="btn-ghost" onclick="STEP=6; renderSignals();">← Previous</button>
+      <button class="btn-primary" ${live.length===0?"disabled":""} onclick="launchAgent();">Launch my agent →</button>
+    </div>
+  `);
+}
+
+async function launchAgent() {
+  const live = CANDIDATE_LEADS.filter((_, i) => !REJECTED.has(i));
+  card(`<h1>Launching…</h1><p class="sub">Enriching contacts, drafting messages, syncing to Notion.</p><div class="loading-box"><div class="spinner"></div></div>`);
+  try {
+    const r = await fetch(API + "/api/icp/launch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        website_url: document.getElementById("site-url")?.value || "unknown",
+        icp_prompt: PROMPT, offer: GOALS.pain_points, leads: live,
+        icp: ICP, keywords: KEYWORDS, tone: GOALS.tone,
+        goal: GOALS.campaign_goal === "calls" ? "demos" : "warm",
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || "launch failed");
+    const data = await r.json();
+    card(`
+      <h1>Agent launched ✓</h1>
+      <p class="sub">${data.synced} lead(s) synced to Notion, drafts ready for your review.</p>
+      <div class="result-box">Source Agent #${data.source_agent_id}  ·  Campaign Agent #${data.campaign_agent_id}  ·  Campaign #${data.campaign_id}\nPipeline: ${JSON.stringify(data.pipeline)}\nExported: ${data.xlsx}</div>
+      <div class="nav" style="justify-content:center;">
+        <button class="btn-primary" onclick="renderUrlEntry()">Start over</button>
+      </div>
+    `);
+  } catch (e) {
+    card(`<h1>Launch failed</h1><p class="sub">${e.message}</p>`);
+  }
+}
+
+function renderConfirmed() {
+  STEP = 6; renderGoals();
 }
 
 renderUrlEntry();

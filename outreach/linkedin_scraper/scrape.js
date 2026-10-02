@@ -116,9 +116,15 @@ async function search(query, maxPosts) {
         }
       }
       if (!container) continue;
-      seen.add(href);
       const nameEl = link.querySelector("img[alt]");
       const author = nameEl ? (nameEl.getAttribute("alt") || "").replace(/^View |.s profile$/gi, "").trim() : null;
+      // Bare single-word/broad queries surface non-post cards too (group,
+      // event, "people also viewed" suggestions) that happen to contain a
+      // profile link but aren't an actual post - no extractable author
+      // name is the reliable tell, so drop those rather than pass junk to
+      // the LLM.
+      if (!author || /open to work|profile$/i.test(author)) continue;
+      seen.add(href);
       out.push({ profileUrl: href, author, text: container.innerText.slice(0, 2500) });
     }
     return out;
