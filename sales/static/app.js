@@ -154,6 +154,12 @@ async function openContact(id) {
         <div class="small muted">persona ${s.persona ?? "—"} · company ${s.company ?? "—"} · intent ${s.intent ?? "—"}</div>
         <div class="small">${esc(s.reason || "")}</div></td></tr>
     </table></div>
+    <h2 style="margin-top:18px">Pitch</h2>
+    ${c.pitch_draft ? `<div class="card"><pre class="code">${esc(c.pitch_draft)}</pre><button class="btn" id="copy-pitch">Copy</button></div>`
+      : '<div class="muted">No draft yet.</div>'}
+    <h2 style="margin-top:18px">LinkedIn note</h2>
+    ${c.linkedin_note_draft ? `<div class="card"><pre class="code">${esc(c.linkedin_note_draft)}</pre><button class="btn" id="copy-note">Copy</button></div>`
+      : '<div class="muted">No draft yet.</div>'}
     <h2 style="margin-top:18px">Campaign status</h2>
     ${c.campaign_status.length ? `<table>${c.campaign_status.map((r) => `<tr><td>#${r.step_number} ${esc(r.type)}</td><td>${stateChip(r.state)}</td><td class="small muted">${r.done_at ? fmtDate(r.done_at) : r.due_at ? "due " + fmtDate(r.due_at) : ""}</td></tr>`).join("")}</table>` : '<div class="muted">Not in any campaign yet.</div>'}
     <h2 style="margin-top:18px">Conversations</h2>
@@ -164,6 +170,8 @@ async function openContact(id) {
   $("#en-phone", d).onclick = () => guard(async () => { await waitJob(await api("POST", `/contacts/${id}/enrich-phone`), "Phone search"); reload(); });
   if ($("#rej", d)) $("#rej", d).onclick = () => guard(async () => { await api("POST", `/contacts/${id}/reject`, { reason: "manual" }); reload(); });
   if ($("#unrej", d)) $("#unrej", d).onclick = () => guard(async () => { await api("POST", `/contacts/${id}/unreject`); reload(); });
+  if ($("#copy-pitch", d)) $("#copy-pitch", d).onclick = () => { navigator.clipboard.writeText(c.pitch_draft); toast("Pitch copied"); };
+  if ($("#copy-note", d)) $("#copy-note", d).onclick = () => { navigator.clipboard.writeText(c.linkedin_note_draft); toast("Note copied"); };
 }
 
 // ---------------------------------------------------------------- agents --

@@ -110,18 +110,15 @@ def import_leads(agent: dict, cands: list[dict]) -> list[int]:
 
 
 def _sync_contact_to_notion(contact_id: int) -> None:
-    """Mirror a freshly-imported lead into the same Notion database
-    outreach/pipeline.py already syncs to - reuses that module as-is so
-    there's one Notion integration, not two drifting ones. Also drafts a
-    first-touch pitch right away (not gated on a campaign being active -
-    the old outreach pipeline always had a draft waiting for review the
-    moment a lead came in, and that's the expectation here too)."""
-    from config import settings
-    from outreach.notion_sync import sync_lead
+    """Draft a first-touch pitch + LinkedIn note right away (not gated on a
+    campaign being active - the old outreach pipeline always had a draft
+    waiting for review the moment a lead came in) and save it onto the
+    contact row itself so the sales dashboard can show it, same as Notion
+    does. Mirroring into Notion (via outreach/pipeline.py's existing
+    integration, reused as-is so there's one Notion sync, not two drifting
+    ones) only happens on top of that, if Notion is configured."""
     from sales.writer import ai_write
 
-    if not settings.notion_api_key or not settings.notion_database_id:
-        return
     with get_conn() as conn:
         c = conn.execute("SELECT * FROM sales_contacts WHERE id = %s", (contact_id,)).fetchone()
     if not c:
@@ -134,6 +131,18 @@ def _sync_contact_to_notion(contact_id: int) -> None:
         pitch = f"Subject: {email['subject']}\n\n{email['body']}"
         dm = ai_write({"type": "message", "step_number": 0}, c, draft_campaign, [])
         linkedin_note = dm["body"]
+
+    if pitch or linkedin_note:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE sales_contacts SET pitch_draft = %s, linkedin_note_draft = %s WHERE id = %s",
+                (pitch, linkedin_note, contact_id),
+            )
+
+    from config import settings
+    if not settings.notion_api_key or not settings.notion_database_id:
+        return
+    from outreach.notion_sync import sync_lead
 
     lead = {
         "company": c["company"] or "Unknown",
