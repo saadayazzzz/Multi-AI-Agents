@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS sales_contacts (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE sales_contacts ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_contacts_profile ON sales_contacts (profile_url) WHERE profile_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sales_contacts_email ON sales_contacts (lower(email));
 CREATE INDEX IF NOT EXISTS idx_sales_contacts_agent ON sales_contacts (agent_id, created_at);

@@ -191,10 +191,10 @@ def recent_activity(agent: dict, var: dict, seat: dict | None, limit: int) -> li
     no topic requirement. First-person phrases keep LinkedIn's search to
     real posts instead of its mixed groups/events/suggestions results."""
     _require_session(seat)
-    titles = [t for t in (agent.get("target_job_titles") or ["founder", "CEO"]) if t.strip()][:4]
+    titles = [t for t in (agent.get("target_job_titles") or ["founder", "CEO"]) if t.strip()][:6]
     out = []
     for t in titles:
-        posts = li.call("search_posts", {"query": f"as a {t}", "max": 20}, seat) or []
+        posts = li.call("search_posts", {"query": f"as a {t}", "max": 30}, seat) or []
         for c in _post_authors(posts, "RECENT_ACTIVITY", "true", 14):
             c["intent"] = "Active on LinkedIn this week. " + (c["intent"] or "")
             out.append(c)

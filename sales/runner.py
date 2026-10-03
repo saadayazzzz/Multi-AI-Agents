@@ -102,9 +102,54 @@ def import_leads(agent: dict, cands: list[dict]) -> list[int]:
         })
         if created:
             ids.append(cid)
+            with contextlib.suppress(Exception):  # Notion is a nice-to-have mirror, never block a real import on it
+                _sync_contact_to_notion(cid)
     if agent.get("list_id") and ids:
         add_contacts_to_list(agent["list_id"], ids)
     return ids
+
+
+def _sync_contact_to_notion(contact_id: int) -> None:
+    """Mirror a freshly-imported lead into the same Notion database
+    outreach/pipeline.py already syncs to - reuses that module as-is so
+    there's one Notion integration, not two drifting ones. Also drafts a
+    first-touch pitch right away (not gated on a campaign being active -
+    the old outreach pipeline always had a draft waiting for review the
+    moment a lead came in, and that's the expectation here too)."""
+    from config import settings
+    from outreach.notion_sync import sync_lead
+    from sales.writer import ai_write
+
+    if not settings.notion_api_key or not settings.notion_database_id:
+        return
+    with get_conn() as conn:
+        c = conn.execute("SELECT * FROM sales_contacts WHERE id = %s", (contact_id,)).fetchone()
+    if not c:
+        return
+
+    pitch = linkedin_note = None
+    with contextlib.suppress(Exception):
+        draft_campaign = {"offer": None, "sender_name": None, "goal": "warm", "tone": "professional"}
+        email = ai_write({"type": "email", "step_number": 0}, c, draft_campaign, [])
+        pitch = f"Subject: {email['subject']}\n\n{email['body']}"
+        dm = ai_write({"type": "message", "step_number": 0}, c, draft_campaign, [])
+        linkedin_note = dm["body"]
+
+    lead = {
+        "company": c["company"] or "Unknown",
+        "contact_name": c["full_name"],
+        "contact_role": c["job_title"],
+        "domain": c["website"] or "",
+        "status": "new",
+        "trigger": c["intent"] or "",
+        "linkedin_url": c["profile_url"],
+        "linkedin_activity": c["intent_type"],
+        "notion_page_id": c["notion_page_id"],
+    }
+    page_id = sync_lead(lead, pitch=pitch, linkedin_note=linkedin_note)
+    if not c["notion_page_id"]:
+        with get_conn() as conn:
+            conn.execute("UPDATE sales_contacts SET notion_page_id = %s WHERE id = %s", (page_id, contact_id))
 
 
 def process(agent: dict, cands: list[dict], run_id: int | None = None) -> dict[str, Any]:
