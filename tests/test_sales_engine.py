@@ -189,7 +189,13 @@ def test_campaign_requires_seats_unless_manual(clean):
     assert lists.get_list(lst["id"])["campaign_id"] == c["id"]
 
 
-def test_manual_sequence_end_to_end(clean, llm):
+def test_manual_sequence_end_to_end(clean, llm, monkeypatch):
+    # No LinkedIn session for this manual campaign - without this, the test's
+    # pass/fail depends on whether a real captured session.json happens to
+    # exist on the machine running it (it does in this repo), which silently
+    # flips the gate logic and isn't what this test is about.
+    monkeypatch.setattr(li, "has_session", lambda seat=None: False)
+    monkeypatch.setattr(executor.li, "has_session", lambda seat=None: False)
     lst = lists.create_list("L")
     c1, c2 = _contacts_in_list(lst["id"], 2)
     camp = campaigns.create_campaign(
